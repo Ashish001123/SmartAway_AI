@@ -21,10 +21,8 @@ services:
     repo: https://github.com/Ashish001123/SmartAway_AI
     branch: main
     buildCommand: npm run build
-    startCommand: CLIENT_URL="https://$CLIENT_URL" AI_URL_PROD="https://$AI_URL_PROD/chat" npm run start
+    startCommand: npm run start
     envVars:
-      - key: PORT
-        value: 5002
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET

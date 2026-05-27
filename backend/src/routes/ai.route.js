@@ -31,10 +31,17 @@ router.post("/", protectRoute, async (req, res) => {
 
     messages.push({ role: "user", content: message });
 
-    const AI_URL =
+    let AI_URL =
       process.env.NODE_ENV === "production"
         ? process.env.AI_URL_PROD
         : process.env.AI_URL;
+
+    if (AI_URL && !AI_URL.startsWith("http")) {
+      AI_URL = `https://${AI_URL}`;
+    }
+    if (AI_URL && !AI_URL.endsWith("/chat")) {
+      AI_URL = `${AI_URL.replace(/\/$/, "")}/chat`;
+    }
 
     const aiRes = await axios.post(AI_URL, {
       message : message,

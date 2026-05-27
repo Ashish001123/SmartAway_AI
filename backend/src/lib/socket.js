@@ -5,11 +5,16 @@ import express from "express";
 const app = express();
 const server = http.createServer(app);
 
+let clientUrl = process.env.CLIENT_URL || "https://fullstack-chat-app-32t0.onrender.com";
+if (clientUrl && !clientUrl.startsWith("http")) {
+  clientUrl = `https://${clientUrl}`;
+}
+
 const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5173",
-      process.env.CLIENT_URL || "https://fullstack-chat-app-32t0.onrender.com",
+      clientUrl,
     ],
   },
 });

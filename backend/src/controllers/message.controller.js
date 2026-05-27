@@ -127,9 +127,16 @@ const triggerAutoReply = async (senderId, receiverUser, incomingText) => {
           text: m.text || "",
         }));
 
-        const AI_URL = process.env.NODE_ENV === "production"
-          ? (process.env.AI_URL_PROD ? process.env.AI_URL_PROD.replace("/chat", "/busy-reply") : "http://127.0.0.1:8000/busy-reply")
+        let AI_URL = process.env.NODE_ENV === "production"
+          ? (process.env.AI_URL_PROD ? process.env.AI_URL_PROD : "http://127.0.0.1:8000/busy-reply")
           : "http://127.0.0.1:8000/busy-reply";
+
+        if (AI_URL && !AI_URL.startsWith("http")) {
+          AI_URL = `https://${AI_URL}`;
+        }
+        if (AI_URL && !AI_URL.endsWith("/busy-reply")) {
+          AI_URL = `${AI_URL.replace("/chat", "").replace(/\/$/, "")}/busy-reply`;
+        }
 
         const response = await axios.post(AI_URL, {
           senderName,
