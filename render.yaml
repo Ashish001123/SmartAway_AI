@@ -3,6 +3,7 @@ services:
   - type: web
     name: smartaway-ai-service
     env: python
+    plan: free
     repo: https://github.com/Ashish001123/SmartAway_AI
     branch: main
     rootDir: ai-agent
@@ -16,6 +17,7 @@ services:
   - type: web
     name: smartaway-chat-app
     env: node
+    plan: free
     repo: https://github.com/Ashish001123/SmartAway_AI
     branch: main
     buildCommand: npm run build
