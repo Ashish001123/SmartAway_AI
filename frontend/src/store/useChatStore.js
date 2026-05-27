@@ -2,6 +2,35 @@ import { create } from "zustand";
 import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
+import { getConversationKey, encryptText, decryptText } from "../lib/crypto.js";
+
+// ─── E2EE helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Decrypt the encrypted fields on a message object using our conversation-scoped key.
+ * Returns the message with `text` set to the decrypted plaintext (or the
+ * original text if the message was sent unencrypted / auto-reply).
+ */
+async function decryptMessageObj(message) {
+  const authUser = useAuthStore.getState().authUser;
+  if (!authUser) return message;
+
+  const senderId = message.senderId?.toString();
+  const receiverId = message.receiverId?.toString();
+  if (!senderId || !receiverId) return message;
+
+  const ciphertext = message.encryptedText;
+  if (!ciphertext) return message; // legacy / auto-reply — keep as-is
+
+  try {
+    const key = await getConversationKey(senderId, receiverId);
+    const plaintext = await decryptText(ciphertext, key);
+    return { ...message, text: plaintext ?? "[Encrypted message]" };
+  } catch (err) {
+    console.error("Failed to decrypt message:", err);
+    return { ...message, text: "[Decryption failed]" };
+  }
+}
 
 export const useChatStore = create((set, get) => ({
   messages: [],
@@ -31,7 +60,12 @@ export const useChatStore = create((set, get) => ({
     set({ isMessagesLoading: true });
     try {
       const res = await axiosInstance.get(`/messages/${userId}`);
-      set({ messages: res.data });
+
+      // Decrypt each message client-side
+      const decrypted = await Promise.all(
+        res.data.map((msg) => decryptMessageObj(msg))
+      );
+      set({ messages: decrypted });
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to load messages");
     } finally {
@@ -42,23 +76,48 @@ export const useChatStore = create((set, get) => ({
   sendMessage: async (messageData) => {
     const { selectedUser, messages } = get();
     try {
+      let payload = { ...messageData };
+
+      // E2EE: encrypt text using derived conversation key
+      if (messageData.text) {
+        try {
+          const authUser = useAuthStore.getState().authUser;
+          if (authUser && selectedUser) {
+            const key = await getConversationKey(authUser._id, selectedUser._id);
+            const encryptedText = await encryptText(messageData.text, key);
+
+            payload = {
+              ...payload,
+              encryptedText,
+              text: "", // server stores empty string; plaintext never leaves this device
+            };
+          }
+        } catch (e) {
+          console.warn("E2EE encryption error:", e);
+        }
+      }
+
       const res = await axiosInstance.post(
         `/messages/send/${selectedUser._id}`,
-        messageData
+        payload
       );
 
-      set({ messages: [...messages, res.data] });
+      // Decrypt the response so our own sent message renders correctly
+      const decrypted = await decryptMessageObj(res.data);
+
+      set({ messages: [...messages, decrypted] });
       get().receiveMessage(res.data);
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to send message");
     }
   },
 
+
   subscribeToMessages: () => {
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
 
-    socket.on("newMessage", (newMessage) => {
+    socket.on("newMessage", async (newMessage) => {
       const { selectedUser, messages } = get();
       const authUser = useAuthStore.getState().authUser;
 
@@ -70,7 +129,9 @@ export const useChatStore = create((set, get) => ({
         newMessage.receiverId === selectedUser._id;
 
       if (isFromSelectedUser || isSentByMeToSelectedUser) {
-        const messageToAdd = isFromSelectedUser ? { ...newMessage, isRead: true } : newMessage;
+        // Decrypt before adding to state
+        const decrypted = await decryptMessageObj(newMessage);
+        const messageToAdd = isFromSelectedUser ? { ...decrypted, isRead: true } : decrypted;
         set({ messages: [...messages, messageToAdd] });
       }
 

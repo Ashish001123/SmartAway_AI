@@ -13,6 +13,8 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
     text: String,
+    encryptedText: String,          // ciphertext encrypted with receiver's public key
+    encryptedTextForSender: String, // ciphertext encrypted with sender's public key (so sender can re-read)
     image: String,
     isRead: { type: Boolean, default: false },
     isAutoReply: { type: Boolean, default: false },

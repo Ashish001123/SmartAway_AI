@@ -149,3 +149,31 @@ export const updateBusySettings = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+// E2EE: Upload this user's RSA public key
+export const updatePublicKey = async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+    if (!publicKey) {
+      return res.status(400).json({ message: "publicKey is required" });
+    }
+
+    await User.findByIdAndUpdate(req.user._id, { publicKey });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.log("error in updatePublicKey:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// E2EE: Fetch another user's RSA public key for encrypting a message to them
+export const getUserPublicKey = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("publicKey");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json({ publicKey: user.publicKey });
+  } catch (error) {
+    console.log("error in getUserPublicKey:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

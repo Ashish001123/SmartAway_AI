@@ -181,7 +181,7 @@ const triggerAutoReply = async (senderId, receiverUser, incomingText) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    const { text, image } = req.body;
+    const { text, image, encryptedText, encryptedTextForSender } = req.body;
     const senderId = req.user._id.toString();
     const receiverId = req.params.id.toString();
 
@@ -206,7 +206,10 @@ export const sendMessage = async (req, res) => {
     const newMessage = new Message({
       senderId,
       receiverId,
-      text: text || "",
+      // If client sent encrypted ciphertexts, store them and leave text empty
+      text: encryptedText ? "" : (text || ""),
+      encryptedText: encryptedText || null,
+      encryptedTextForSender: encryptedTextForSender || null,
       image: imageUrl,
       isRead: false,
     });
@@ -221,7 +224,7 @@ export const sendMessage = async (req, res) => {
     try {
       const receiver = await User.findById(receiverId);
       if (receiver && isUserBusy(receiver)) {
-        
+        // Auto-reply uses plaintext since server generates the text
         triggerAutoReply(senderId, receiver, text || "");
       }
     } catch (err) {

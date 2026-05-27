@@ -130,6 +130,8 @@ const ChatContainer = () => {
                     🤖 Auto-Reply Agent
                   </span>
                 )}
+
+
                 
                 {/* Reactions list */}
                 {message.reactions && message.reactions.length > 0 && (

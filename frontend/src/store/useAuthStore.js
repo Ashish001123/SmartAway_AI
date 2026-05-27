@@ -3,6 +3,7 @@ import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
+// E2EE uses conversation-scoped keys derived on demand, no key generation needed here
 
 const BASE_URL =
   import.meta.env.MODE === "development" ? "http://localhost:5002" : "/";
@@ -16,12 +17,14 @@ export const useAuthStore = create((set, get) => ({
   onlineUsers: [],
   socket: null,
 
+
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
-
       set({ authUser: res.data });
       get().connectSocket();
+
+
     } catch (error) {
       console.log("Error in checkAuth:", error);
       set({ authUser: null });
@@ -36,6 +39,8 @@ signup: async (data) => {
     set({ authUser: res.data });
     toast.success("Account created successfully");
     get().connectSocket();
+
+
   } catch (error) {
     toast.error(error?.response?.data?.message || "Signup failed. Try again.");
   } finally {
@@ -49,8 +54,9 @@ signup: async (data) => {
       const res = await axiosInstance.post("/auth/login", data);
       set({ authUser: res.data });
       toast.success("Logged in successfully");
-
       get().connectSocket();
+
+
     } catch (error) {
       toast.error(error?.response?.data?.message || "login failed. Try again.");
     } finally {
@@ -60,6 +66,7 @@ signup: async (data) => {
 
   logout: async () => {
     try {
+      const { authUser } = get();
       await axiosInstance.post("/auth/logout");
       set({ authUser: null });
       toast.success("Logged out successfully");

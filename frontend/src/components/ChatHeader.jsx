@@ -62,6 +62,11 @@ const ChatHeader = () => {
                 ? "Online"
                 : "Offline"} 
             </p>
+            {!isAI && (
+              <p className="text-[10px] text-emerald-500 flex items-center gap-1 font-medium mt-0.5 select-none">
+                🔒 End-to-end encrypted
+              </p>
+            )}
           </div>
         </div>
 
