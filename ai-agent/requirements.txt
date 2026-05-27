@@ -2,7 +2,7 @@ fastapi
 uvicorn
 openai
 python-dotenv
-mem0
+mem0ai
 langchain-openai
 langchain-qdrant
 langchain-text-splitters
