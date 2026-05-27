@@ -235,4 +235,6 @@ Write your reply:"""
         return response.choices[0].message.content.strip()
     except Exception as e:
         print("Error in generate_busy_reply:", e)
-        return f"Hey {sender_name}! 👋 I'm {receiver_name}'s AI assistant. {receiver_name} is currently busy ({busy_message}). I'll pass your message along! 😊"
+        # Use a safe, clean fallback message that doesn't leak raw prompt instructions
+        clean_busy = busy_message if len(busy_message) < 60 else "at the moment"
+        return f"Hey {sender_name}! 👋 I'm {receiver_name}'s AI assistant. {receiver_name} is currently busy ({clean_busy}). I'll pass your message along! 😊"

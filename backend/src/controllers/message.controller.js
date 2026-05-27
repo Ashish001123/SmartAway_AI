@@ -132,8 +132,8 @@ const triggerAutoReply = async (senderId, receiverUser, incomingText) => {
 
     if (lastAutoReply) {
       const diffSecs = (new Date() - new Date(lastAutoReply.createdAt)) / 1000;
-      if (diffSecs < 15) {
-        console.log("Auto-reply skipped (duplicate within 15s)");
+      if (diffSecs < 3) {
+        console.log("Auto-reply skipped (duplicate within 3s)");
         return;
       }
     }
