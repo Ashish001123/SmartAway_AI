@@ -2,9 +2,9 @@ from pydantic import BaseModel
 from fastapi import FastAPI
 from openai import OpenAI
 from dotenv import load_dotenv
-from agent import run_agent
+from agent import run_agent, generate_busy_reply
 from fastapi.middleware.cors import CORSMiddleware 
-
+import os
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app=FastAPI()
@@ -46,6 +46,30 @@ def chat(query: Query):
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
-        
 
+class BusyQuery(BaseModel):
+    senderName: str
+    receiverName: str
+    messageText: str
+    busyMessage: str
+    chatHistory: list = []
     
+@app.post("/busy-reply")
+def busy_reply(query: BusyQuery):
+    try:
+        response = generate_busy_reply(
+            sender_name=query.senderName,
+            receiver_name=query.receiverName,
+            message_text=query.messageText,
+            busy_message=query.busyMessage,
+            chat_history=query.chatHistory
+        )
+        return {
+            "result": response
+        }
+    except Exception as e:
+        print("ERROR in /busy-reply:", e)
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+

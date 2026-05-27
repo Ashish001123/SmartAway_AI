@@ -36,6 +36,11 @@ export const signup = async (req, res) => {
         fullName: newUser.fullName,
         email: newUser.email,
         profilePic: newUser.profilePic,
+        isBusy: newUser.isBusy,
+        busyMessage: newUser.busyMessage,
+        busyStart: newUser.busyStart,
+        busyEnd: newUser.busyEnd,
+        useAI: newUser.useAI,
       });
     } else {
       res.status(400).json({ message: "Invalid user data" });
@@ -67,6 +72,11 @@ export const login = async (req, res) => {
       fullName: user.fullName,
       email: user.email,
       profilePic: user.profilePic,
+      isBusy: user.isBusy,
+      busyMessage: user.busyMessage,
+      busyStart: user.busyStart,
+      busyEnd: user.busyEnd,
+      useAI: user.useAI,
     });
   } catch (error) {
     console.log("Error in login controller", error.message);
@@ -113,5 +123,29 @@ export const checkAuth = (req, res) => {
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const updateBusySettings = async (req, res) => {
+  try {
+    const { isBusy, busyMessage, busyStart, busyEnd, useAI } = req.body;
+    const userId = req.user._id;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        isBusy,
+        busyMessage,
+        busyStart: busyStart ? new Date(busyStart) : null,
+        busyEnd: busyEnd ? new Date(busyEnd) : null,
+        useAI,
+      },
+      { new: true }
+    ).select("-password");
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.log("error in update busy settings:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

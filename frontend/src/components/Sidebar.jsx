@@ -1,6 +1,5 @@
 
 
-
 import { useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import SidebarSkeleton from "./skeletons/SidebarSkeleton";
@@ -37,7 +36,17 @@ const Sidebar = () => {
     if (!socket) return;
 
     const handleNewMessage = (message) => {
-      receiveMessage(message);
+      const { selectedUser } = useChatStore.getState();
+      const authUser = useAuthStore.getState().authUser;
+
+      const isInActiveChat =
+        selectedUser &&
+        (message.senderId === selectedUser._id ||
+          (message.isAutoReply && message.receiverId === selectedUser._id));
+
+      if (!isInActiveChat) {
+        receiveMessage(message);
+      }
     };
 
     socket.on("newMessage", handleNewMessage);
@@ -106,6 +115,14 @@ const Sidebar = () => {
             onClick={async () => {
               setSelectedUser(user);
               clearUnread(user._id);
+              
+              // Request browser notification permission on user gesture
+              if (typeof window !== "undefined" && "Notification" in window) {
+                if (Notification.permission === "default") {
+                  Notification.requestPermission().catch(console.error);
+                }
+              }
+
               try {
                 await axiosInstance.put(`/messages/read/${user._id}`);
               } catch {

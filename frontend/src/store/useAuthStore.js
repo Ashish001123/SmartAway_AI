@@ -2,9 +2,10 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
+import { useChatStore } from "./useChatStore";
 
 const BASE_URL =
-  import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
+  import.meta.env.MODE === "development" ? "http://localhost:5002" : "/";
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,
@@ -82,9 +83,32 @@ signup: async (data) => {
     }
   },
 
+  isUpdatingBusySettings: false,
+  updateBusySettings: async (data) => {
+    set({ isUpdatingBusySettings: true });
+    try {
+      const res = await axiosInstance.put("/auth/busy-settings", data);
+      set({ authUser: res.data });
+      toast.success("Busy settings updated successfully");
+      return res.data;
+    } catch (error) {
+      console.log("error in update busy settings:", error);
+      toast.error(error.response?.data?.message || "Failed to update settings");
+    } finally {
+      set({ isUpdatingBusySettings: false });
+    }
+  },
+
   connectSocket: () => {
     const { authUser } = get();
     if (!authUser || get().socket?.connected) return;
+
+    // Request notification permission if not asked yet
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
 
     const socket = io(BASE_URL, {
       query: {
@@ -98,8 +122,44 @@ signup: async (data) => {
     socket.on("getOnlineUsers", (userIds) => {
       set({ onlineUsers: userIds });
     });
+
+    // Global listener for browser notifications
+    socket.on("newMessage", (message) => {
+      // Don't show notification for our own sent messages
+      if (message.senderId === authUser._id) return;
+
+      const { selectedUser } = useChatStore.getState();
+      const isChatActive = selectedUser && selectedUser._id === message.senderId;
+      const isWindowActive = !document.hidden;
+
+      // Show notification if the chat is not open, or if the tab is in background
+      if (!isChatActive || !isWindowActive) {
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          const users = useChatStore.getState().users;
+          const sender = users.find((u) => u._id === message.senderId);
+          const title = sender ? sender.fullName : "New Message";
+          
+          const options = {
+            body: message.text || (message.image ? "📷 Photo" : "New message received"),
+            icon: sender?.profilePic || "/avatar.png",
+          };
+
+          const notification = new Notification(title, options);
+          
+          notification.onclick = () => {
+            window.focus();
+            if (sender) {
+              useChatStore.getState().setSelectedUser(sender);
+            }
+          };
+        }
+      }
+    });
   },
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
+    if (get().socket?.connected) {
+      get().socket.off("newMessage");
+      get().socket.disconnect();
+    }
   },
 }));

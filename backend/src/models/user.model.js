@@ -20,6 +20,26 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    isBusy: {
+      type: Boolean,
+      default: false,
+    },
+    busyMessage: {
+      type: String,
+      default: "",
+    },
+    busyStart: {
+      type: Date,
+      default: null,
+    },
+    busyEnd: {
+      type: Date,
+      default: null,
+    },
+    useAI: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

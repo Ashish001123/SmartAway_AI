@@ -127,9 +127,8 @@ const MessageInput = ({ isAI }) => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className={`hidden sm:flex btn btn-circle btn-ghost ${
-                  imagePreview ? "text-emerald-500" : "text-zinc-400"
-                }`}
+                className={`hidden sm:flex btn btn-circle btn-ghost ${imagePreview ? "text-emerald-500" : "text-zinc-400"
+                  }`}
               >
                 <Image size={20} />
               </button>

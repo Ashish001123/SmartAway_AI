@@ -2,7 +2,6 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 embedding = OpenAIEmbeddings(

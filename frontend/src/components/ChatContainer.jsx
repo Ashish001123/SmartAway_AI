@@ -1,6 +1,7 @@
 import { useChatStore } from "../store/useChatStore";
 import { useAIStore } from "../store/ai.store";
 import { useEffect, useRef } from "react";
+import { Trash2, Smile, Check, CheckCheck } from "lucide-react";
 
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
@@ -17,15 +18,16 @@ const ChatContainer = () => {
     selectedUser,
     subscribeToMessages,
     unsubscribeFromMessages,
+    deleteMessage,
+    reactToMessage,
   } = useChatStore();
 
   const { messages: aiMessages } = useAIStore();
-  const { authUser } = useAuthStore();
+  const { authUser, onlineUsers } = useAuthStore();
   const messageEndRef = useRef(null);
 
   const isAI = selectedUser?._id === "ai_assistant";
 
-  
   useEffect(() => {
     if (!selectedUser?._id || isAI) return;
 
@@ -41,20 +43,10 @@ const ChatContainer = () => {
     unsubscribeFromMessages,
   ]);
 
-//   useEffect(() => {
-//   if (!selectedUser?._id || isAI) return;
-
-//   getMessages(selectedUser._id);
-//   subscribeToMessages(selectedUser._id);
-
-//   return () => unsubscribeFromMessages(selectedUser._id);
-// }, [selectedUser._id, isAI, getMessages, subscribeToMessages, unsubscribeFromMessages]);
-  // scroll for both
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, aiMessages]);
 
-  // loading
   if (!isAI && isMessagesLoading) {
     return (
       <div className="flex-1 flex flex-col overflow-auto">
@@ -65,7 +57,6 @@ const ChatContainer = () => {
     );
   }
 
-  // choose data source
   const chatMessages = isAI
     ? aiMessages.map((m, i) => ({
         _id: i,
@@ -87,7 +78,7 @@ const ChatContainer = () => {
           return (
             <div
               key={message._id}
-              className={`chat ${isMe ? "chat-end" : "chat-start"}`}
+              className={`chat ${isMe ? "chat-end" : "chat-start"} group`}
             >
               <div className="chat-image avatar">
                 <div className="size-10 rounded-full border">
@@ -104,19 +95,28 @@ const ChatContainer = () => {
                 </div>
               </div>
 
-              <div className="chat-header mb-1">
-                {!isAI && (
-                  <time className="text-xs opacity-50 ml-1">
-                    {formatMessageTime(message.createdAt)}
-                  </time>
-                )}
-              </div>
-
               <div
                 className="chat-bubble flex flex-col max-w-[70%]
-                break-words break-all whitespace-pre-wrap"
+                break-words break-all whitespace-pre-wrap relative pb-4 pr-14"
                 ref={isLast ? messageEndRef : null}
               >
+                {/* Time & Ticks at bottom right */}
+                {!isAI && (
+                  <div className="absolute bottom-1 right-1.5 flex items-center gap-1 text-[10px] opacity-80 select-none pointer-events-none">
+                    <span>{formatMessageTime(message.createdAt)}</span>
+                    {isMe && (
+                      <span className="flex items-center flex-shrink-0">
+                        {message.isRead ? (
+                          <CheckCheck size={15} className="text-blue-500 flex-shrink-0" />
+                        ) : (selectedUser && onlineUsers.includes(selectedUser._id)) ? (
+                          <CheckCheck size={15} className="text-zinc-400 flex-shrink-0" />
+                        ) : (
+                          <Check size={15} className="text-zinc-400 flex-shrink-0" />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {message.image && (
                   <img
                     src={message.image}
@@ -125,13 +125,87 @@ const ChatContainer = () => {
                   />
                 )}
                 {message.text && <p>{message.text}</p>}
+                {message.isAutoReply && (
+                  <span className="text-[9px] opacity-70 mt-1.5 flex items-center gap-1 font-semibold border-t border-base-content/10 pt-1 select-none">
+                    🤖 Auto-Reply Agent
+                  </span>
+                )}
+                
+                {/* Reactions list */}
+                {message.reactions && message.reactions.length > 0 && (
+                  <div
+                    className={`absolute bottom-[-10px] flex items-center gap-0.5 bg-base-200 border border-base-300 rounded-full px-1.5 py-0.5 text-[10px] shadow-sm z-10 cursor-pointer hover:bg-base-300 select-none
+                      ${isMe ? "right-3" : "left-3"}`}
+                    onClick={() => {
+                      // Click reaction badge to remove own reaction
+                      const myReaction = message.reactions.find((r) => r.userId === authUser._id);
+                      if (myReaction) {
+                        reactToMessage(message._id, myReaction.emoji);
+                      }
+                    }}
+                    title="Click to remove your reaction"
+                  >
+                    {Array.from(new Set(message.reactions.map((r) => r.emoji))).map((emoji) => (
+                      <span key={emoji}>{emoji}</span>
+                    ))}
+                    {message.reactions.length > 1 && (
+                      <span className="text-[9px] opacity-75 font-semibold ml-0.5">
+                        {message.reactions.length}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Message controls container */}
+                {!isAI && (
+                  <div
+                    className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-10
+                      ${isMe ? "-left-[60px]" : "-right-[60px]"}`}
+                  >
+                    {/* Emoji Reaction dropdown */}
+                    <div className="dropdown dropdown-top dropdown-hover">
+                      <label
+                        tabIndex={0}
+                        className="p-1 rounded-full hover:bg-base-300 text-base-content/70 cursor-pointer flex items-center justify-center"
+                      >
+                        <Smile size={15} />
+                      </label>
+                      <div
+                        tabIndex={0}
+                        className="dropdown-content z-[20] p-1.5 shadow bg-base-200 rounded-full flex flex-row gap-1.5 border border-base-300 mb-1"
+                      >
+                        {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => reactToMessage(message._id, emoji)}
+                            className="hover:scale-125 transition-transform px-1 cursor-pointer text-sm"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={() => {
+                        if (window.confirm("Delete this message?")) {
+                          deleteMessage(message._id);
+                        }
+                      }}
+                      className="p-1 rounded-full hover:bg-base-300 text-error cursor-pointer flex items-center justify-center"
+                      title="Delete message"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* normal input OR AI input */}
       {isAI ? <MessageInput isAI /> : <MessageInput />}
     </div>
   );

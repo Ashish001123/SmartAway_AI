@@ -1,7 +1,6 @@
 import os
 from openai import OpenAI
 
-# Initialize client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def improve_text_tool(user_text: str) -> str:
@@ -14,7 +13,7 @@ def improve_text_tool(user_text: str) -> str:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # fast + cheap
+            model="gpt-4o-mini",  
             messages=[
                 {
                     "role": "system",

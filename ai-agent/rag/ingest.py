@@ -24,7 +24,6 @@ def load_markdown_docs(folder="../rag_data"):
 
     return docs
 
-
 def index_docs():
     print("🚀 Indexing started...")
 
@@ -49,7 +48,6 @@ def index_docs():
     )
 
     print("✅ Documents indexed successfully!")
-
 
 if __name__ == "__main__":
     index_docs()
