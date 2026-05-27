@@ -19,7 +19,7 @@ services:
     repo: https://github.com/Ashish001123/SmartAway_AI
     branch: main
     buildCommand: npm run build
-    startCommand: npm run start
+    startCommand: CLIENT_URL="https://$CLIENT_URL" AI_URL_PROD="https://$AI_URL_PROD/chat" npm run start
     envVars:
       - key: PORT
         value: 5002
@@ -35,17 +35,15 @@ services:
         value: "372112187682179"
       - key: CLOUDINARY_API_SECRET
         sync: false # Render will ask you to input this value
-      # Automatically fetch the host of the smartaway-ai-service and append /chat
-      - key: AI_URL
+      # Fetch the raw hosts of the services and format them inside the startCommand
+      - key: AI_URL_PROD
         fromService:
           type: web
           name: smartaway-ai-service
           property: host
-        value: https://${host}/chat
-      # Automatically fetch its own host to resolve CLIENT_URL for CORS validation
       - key: CLIENT_URL
         fromService:
           type: web
           name: smartaway-chat-app
           property: host
-        value: https://${host}
+
