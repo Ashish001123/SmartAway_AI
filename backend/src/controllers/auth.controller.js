@@ -147,6 +147,7 @@ export const googleAuth = async (req, res) => {
     if (user) {
       // Existing user — link googleId if not already linked
       let needsSave = false;
+      const wasVerifiedBefore = user.isVerified;
       if (!user.googleId) {
         user.googleId = googleId;
         needsSave = true;
@@ -157,6 +158,10 @@ export const googleAuth = async (req, res) => {
       }
       if (needsSave) {
         await user.save();
+      }
+      // If the user was not verified before and is now verified, trigger the welcome email
+      if (!wasVerifiedBefore) {
+        isNewUser = true;
       }
     } else {
       // New user — create account
@@ -175,7 +180,7 @@ export const googleAuth = async (req, res) => {
 
     generateToken(user._id, res);
 
-    // Send welcome email only for brand-new users
+    // Send welcome email only for brand-new or newly-verified users
     if (isNewUser) {
       sendWelcomeEmail(email, name);
     }

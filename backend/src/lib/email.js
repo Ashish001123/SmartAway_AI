@@ -159,98 +159,139 @@ export const sendWelcomeEmail = async (to, fullName) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin:0;padding:0;background-color:#0f0f1a;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0f0f1a;padding:40px 20px;">
+<body style="margin:0;padding:0;background-color:#0d0e15;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0d0e15;padding:40px 20px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color:#1a1a2e;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(124,58,237,0.15);">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color:#161722;border-radius:20px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(124,58,237,0.25);border:1px solid #232537;">
           
           <!-- Header with gradient -->
           <tr>
-            <td style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 50%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
-              <div style="font-size:36px;font-weight:800;color:#ffffff;letter-spacing:-1px;">
-                💬 ChatApp
+            <td style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#d946ef 100%);padding:45px 40px 35px;text-align:center;">
+              <div style="font-size:38px;font-weight:800;color:#ffffff;letter-spacing:-1px;">
+                💬 SmartAway AI
               </div>
-              <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:8px;letter-spacing:2px;text-transform:uppercase;">
-                Connect • Chat • Share
+              <div style="font-size:13px;color:rgba(255,255,255,0.9);margin-top:10px;letter-spacing:3px;text-transform:uppercase;font-weight:600;">
+                Secure Chat &bull; Smart AI Agent &bull; Auto-Reply
               </div>
             </td>
           </tr>
 
-          <!-- Body -->
+          <!-- Body Content -->
           <tr>
-            <td style="padding:40px;">
-              <h1 style="color:#ffffff;font-size:28px;margin:0 0 8px;font-weight:700;">
+            <td style="padding:40px 40px 30px;">
+              <h1 style="color:#ffffff;font-size:28px;margin:0 0 12px;font-weight:700;letter-spacing:-0.5px;">
                 Welcome aboard, ${fullName}! 🎉
               </h1>
-              <p style="color:#a0a0b8;font-size:16px;line-height:1.7;margin:0 0 24px;">
-                We're thrilled to have you join the ChatApp community. Your account is all set up and ready to go!
+              <p style="color:#94a3b8;font-size:16px;line-height:1.7;margin:0 0 28px;">
+                We're excited to have you join us! <strong>SmartAway AI</strong> is more than just a chat application—it is your personal communication assistant. Our built-in AI tools keep your chats moving even when you are busy.
               </p>
 
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:24px 0;">
+              <div style="color:#ffffff;font-size:18px;font-weight:700;margin-bottom:16px;letter-spacing:-0.3px;">
+                Explore Core Features:
+              </div>
+
+              <!-- Feature 1: E2EE -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:16px;">
                 <tr>
-                  <td style="background-color:#252540;border-radius:12px;padding:20px;">
+                  <td style="background-color:#1e2030;border-radius:14px;padding:18px;border:1px solid #2e3148;">
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td width="40" style="vertical-align:top;padding-right:12px;font-size:24px;">🚀</td>
+                        <td width="42" style="vertical-align:top;padding-right:14px;font-size:26px;">🔐</td>
                         <td>
-                          <div style="color:#e0e0f0;font-weight:600;font-size:15px;">Real-time messaging</div>
-                          <div style="color:#8888a8;font-size:13px;margin-top:4px;">Instant delivery with read receipts</div>
+                          <div style="color:#f1f5f9;font-weight:600;font-size:15px;margin-bottom:2px;">End-to-End Encryption</div>
+                          <div style="color:#94a3b8;font-size:13px;line-height:1.5;">Your direct chats are private and secure, fully encrypted client-side using RSA/AES keys.</div>
                         </td>
                       </tr>
                     </table>
                   </td>
                 </tr>
-                <tr><td style="height:8px;"></td></tr>
+              </table>
+
+              <!-- Feature 2: AI Assistant -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:16px;">
                 <tr>
-                  <td style="background-color:#252540;border-radius:12px;padding:20px;">
+                  <td style="background-color:#1e2030;border-radius:14px;padding:18px;border:1px solid #2e3148;">
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td width="40" style="vertical-align:top;padding-right:12px;font-size:24px;">📸</td>
+                        <td width="42" style="vertical-align:top;padding-right:14px;font-size:26px;">🤖</td>
                         <td>
-                          <div style="color:#e0e0f0;font-weight:600;font-size:15px;">Share photos</div>
-                          <div style="color:#8888a8;font-size:13px;margin-top:4px;">Send images and moments with friends</div>
+                          <div style="color:#f1f5f9;font-weight:600;font-size:15px;margin-bottom:2px;">Built-in AI Assistant</div>
+                          <div style="color:#94a3b8;font-size:13px;line-height:1.5;">Click the AI Assistant in your sidebar to chat, brainstorm, ask questions, or write code in real-time.</div>
                         </td>
                       </tr>
                     </table>
                   </td>
                 </tr>
-                <tr><td style="height:8px;"></td></tr>
+              </table>
+
+              <!-- Feature 3: Auto-Reply AI Agent -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:16px;">
                 <tr>
-                  <td style="background-color:#252540;border-radius:12px;padding:20px;">
+                  <td style="background-color:#1e2030;border-radius:14px;padding:18px;border:1px solid #2e3148;">
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td width="40" style="vertical-align:top;padding-right:12px;font-size:24px;">🟢</td>
+                        <td width="42" style="vertical-align:top;padding-right:14px;font-size:26px;">📅</td>
                         <td>
-                          <div style="color:#e0e0f0;font-weight:600;font-size:15px;">Online presence</div>
-                          <div style="color:#8888a8;font-size:13px;margin-top:4px;">See who's online and available to chat</div>
+                          <div style="color:#a78bfa;font-weight:700;font-size:15px;margin-bottom:2px;">Auto-Reply AI Scheduler Agent</div>
+                          <div style="color:#cbd5e1;font-size:13px;line-height:1.5;">When you toggle **Busy** in your Profile and enable **AI Auto-Reply**, our smart agent handles incoming messages using chat history context!</div>
                         </td>
                       </tr>
                     </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Feature 4: Real-time Presence -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="background-color:#1e2030;border-radius:14px;padding:18px;border:1px solid #2e3148;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="42" style="vertical-align:top;padding-right:14px;font-size:26px;">⚡</td>
+                        <td>
+                          <div style="color:#f1f5f9;font-weight:600;font-size:15px;margin-bottom:2px;">Real-time Presence & Sharing</div>
+                          <div style="color:#94a3b8;font-size:13px;line-height:1.5;">Instantly see online status, typing indicators, and easily share images with your contacts.</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Quick start tip box -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:32px;">
+                <tr>
+                  <td style="background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(217,70,239,0.1));border:1px solid rgba(139,92,246,0.3);border-radius:14px;padding:20px;">
+                    <div style="color:#a78bfa;font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">💡 Try the AI Scheduler:</div>
+                    <div style="color:#cbd5e1;font-size:13px;line-height:1.6;">
+                      Head to your <strong>Profile settings</strong>, toggle your status to <strong>Busy</strong>, enter a busy reason, and switch <strong>Use AI Auto-Reply</strong> to <strong>ON</strong>. Have a friend send you a message—they'll get a response from your AI Agent!
+                    </div>
                   </td>
                 </tr>
               </table>
 
               <!-- CTA Button -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:32px 0 16px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:20px;margin-bottom:20px;">
                 <tr>
                   <td align="center">
                     <a href="${process.env.NODE_ENV === "production" ? process.env.CLIENT_URL || "https://smartaway-chat-app-zvpr.onrender.com" : "http://localhost:5173"}" 
-                       style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#ffffff;text-decoration:none;padding:16px 48px;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:0.5px;box-shadow:0 8px 24px rgba(124,58,237,0.4);">
-                      Start Chatting →
+                       style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;padding:16px 42px;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:0.5px;box-shadow:0 10px 20px -5px rgba(99,102,241,0.5);">
+                      Launch Chat Space &rarr;
                     </a>
                   </td>
                 </tr>
               </table>
+
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding:24px 40px;border-top:1px solid #252540;text-align:center;">
-              <p style="color:#6b6b80;font-size:12px;margin:0;line-height:1.6;">
-                You're receiving this email because you signed up at ChatApp.<br>
-                © ${new Date().getFullYear()} ChatApp. All rights reserved.
+            <td style="padding:28px 40px;border-top:1px solid #232537;text-align:center;background-color:#12131c;">
+              <p style="color:#64748b;font-size:12px;margin:0;line-height:1.6;">
+                You're receiving this email because you signed up for an account on SmartAway AI.<br>
+                &copy; ${new Date().getFullYear()} SmartAway AI. All rights reserved.
               </p>
             </td>
           </tr>
@@ -264,7 +305,7 @@ export const sendWelcomeEmail = async (to, fullName) => {
 
     await sendMail({
       to,
-      subject: "Welcome to ChatApp! 🎉 Your account is ready",
+      subject: "Welcome to SmartAway AI! 🚀 Your account is ready",
       html,
     });
   } catch (error) {
