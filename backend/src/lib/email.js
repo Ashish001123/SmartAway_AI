@@ -4,16 +4,43 @@ import dns from "dns";
 // Force Node to prefer IPv4 over IPv6 when resolving DNS globally.
 dns.setDefaultResultOrder("ipv4first");
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER?.trim(),
-    pass: process.env.EMAIL_PASS?.trim(),
-  },
-  family: 4, // Explicitly force Nodemailer to connect using IPv4
-});
+let transporterInstance = null;
+
+const getTransporter = async () => {
+  if (transporterInstance) return transporterInstance;
+
+  let host = "smtp.gmail.com";
+  try {
+    const ips = await new Promise((resolve, reject) => {
+      dns.resolve4("smtp.gmail.com", (err, addresses) => {
+        if (err) reject(err);
+        else resolve(addresses);
+      });
+    });
+    if (ips && ips.length > 0) {
+      // Pick a random resolved IPv4 address to balance load
+      host = ips[Math.floor(Math.random() * ips.length)];
+      console.log("Resolved smtp.gmail.com to IPv4 for SMTP transport:", host);
+    }
+  } catch (err) {
+    console.error("DNS IPv4 resolution for smtp.gmail.com failed, falling back to hostname:", err.message);
+  }
+
+  transporterInstance = nodemailer.createTransport({
+    host,
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER?.trim(),
+      pass: process.env.EMAIL_PASS?.trim(),
+    },
+    tls: {
+      servername: "smtp.gmail.com", // Force SNI to match Google's SSL cert
+    },
+  });
+
+  return transporterInstance;
+};
 
 /**
  * Send a styled welcome email to a newly registered user.
@@ -21,6 +48,7 @@ const transporter = nodemailer.createTransport({
  */
 export const sendWelcomeEmail = async (to, fullName) => {
   try {
+    const transporter = await getTransporter();
     const html = `
 <!DOCTYPE html>
 <html>
@@ -151,6 +179,7 @@ export const sendWelcomeEmail = async (to, fullName) => {
  */
 export const sendOTPEmail = async (to, otp) => {
   try {
+    const transporter = await getTransporter();
     const html = `
 <!DOCTYPE html>
 <html>
@@ -256,6 +285,7 @@ export const sendOTPEmail = async (to, otp) => {
  */
 export const sendVerificationEmail = async (to, otp) => {
   try {
+    const transporter = await getTransporter();
     const html = `
 <!DOCTYPE html>
 <html>
