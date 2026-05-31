@@ -28,8 +28,8 @@ const getTransporter = async () => {
 
   transporterInstance = nodemailer.createTransport({
     host,
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false, // Use STARTTLS on port 587
     auth: {
       user: process.env.EMAIL_USER?.trim(),
       pass: process.env.EMAIL_PASS?.trim(),
