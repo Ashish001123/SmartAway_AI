@@ -512,3 +512,101 @@ export const sendVerificationEmail = async (to, otp) => {
     console.error("Error sending verification email:", error.message);
   }
 };
+
+/**
+ * Send an email notification for a new message received while offline.
+ */
+export const sendNewMessageEmail = async (to, receiverName, senderName, messagePreview) => {
+  try {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0d0e15;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0d0e15;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color:#161722;border-radius:20px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(124,58,237,0.25);border:1px solid #232537;">
+          
+          <!-- Header with gradient -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#d946ef 100%);padding:30px 40px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">
+                💬 SmartAway AI Notification
+              </div>
+            </td>
+          </tr>
+
+          <!-- Body Content -->
+          <tr>
+            <td style="padding:40px 40px 30px;">
+              <h2 style="color:#ffffff;font-size:20px;margin:0 0 16px;font-weight:700;letter-spacing:-0.3px;">
+                New Message Received 📩
+              </h2>
+              <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 24px;">
+                Hello ${receiverName},
+              </p>
+              <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 24px;">
+                You received a new message from <strong style="color:#ffffff;">${senderName}</strong> while you were away:
+              </p>
+
+              <!-- Message preview block -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:32px;">
+                <tr>
+                  <td style="background-color:#1e2030;border-left:4px solid #8b5cf6;border-radius:4px 12px 12px 4px;padding:20px;border:1px solid #2e3148;">
+                    <div style="color:#cbd5e1;font-size:15px;line-height:1.6;font-style:italic;">
+                      "${messagePreview}"
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 28px;">
+                Log back in to reply and continue the conversation.
+              </p>
+
+              <!-- CTA Button -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:20px;margin-bottom:20px;">
+                <tr>
+                  <td align="center">
+                    <a href="${process.env.NODE_ENV === "production" ? process.env.CLIENT_URL || "https://smartaway-chat-app-zvpr.onrender.com" : "http://localhost:5173"}" 
+                       style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:12px;font-size:15px;font-weight:700;letter-spacing:0.5px;box-shadow:0 8px 16px -4px rgba(99,102,241,0.4);">
+                      Open Chat Space &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 40px;border-top:1px solid #232537;text-align:center;background-color:#12131c;">
+              <p style="color:#64748b;font-size:11px;margin:0;line-height:1.6;">
+                You are receiving this email because you registered on SmartAway AI.<br>
+                &copy; ${new Date().getFullYear()} SmartAway AI. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await sendMail({
+      to,
+      subject: `New message on SmartAway AI from ${senderName} 📩`,
+      html,
+    });
+  } catch (error) {
+    console.error("Error sending message notification email:", error.message);
+  }
+};
+

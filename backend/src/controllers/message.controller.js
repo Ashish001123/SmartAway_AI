@@ -6,6 +6,7 @@ import crypto from "crypto";
 
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { sendNewMessageEmail } from "../lib/email.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -259,6 +260,39 @@ export const sendMessage = async (req, res) => {
     const receiverSocketId = getReceiverSocketId(receiverId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("newMessage", newMessage);
+    } else {
+      // Receiver is offline! Send email notification asynchronously
+      (async () => {
+        try {
+          const receiver = await User.findById(receiverId);
+          if (receiver && receiver.email) {
+            // Count unread messages from this sender to receiver to prevent notification spam
+            const unreadCount = await Message.countDocuments({
+              senderId,
+              receiverId,
+              isRead: false,
+            });
+            // Send the notification email only for the first unread message in this offline session
+            if (unreadCount === 1) {
+              let preview = "Sent a secure encrypted message (open the app to decrypt)";
+              if (encryptedText) {
+                const decrypted = decryptText(encryptedText, senderId, receiverId);
+                if (decrypted) {
+                  preview = decrypted.length > 100 ? `${decrypted.substring(0, 100)}...` : decrypted;
+                }
+              } else if (image) {
+                preview = "Sent an image 🖼️";
+              } else if (text) {
+                preview = text.length > 100 ? `${text.substring(0, 100)}...` : text;
+              }
+              const senderName = req.user.fullName || "A user";
+              sendNewMessageEmail(receiver.email, receiver.fullName, senderName, preview);
+            }
+          }
+        } catch (emailErr) {
+          console.error("Error triggering offline message email notification:", emailErr);
+        }
+      })();
     }
 
     try {
