@@ -58,7 +58,7 @@ const sendViaBrevo = async (to, subject, html) => {
     },
     body: JSON.stringify({
       sender: {
-        name: "ChatApp",
+        name: "SmartWay Chat",
         email: senderEmail,
       },
       to: [
@@ -134,7 +134,7 @@ const sendMail = async ({ to, subject, html }) => {
     try {
       const transporter = await getTransporter();
       await transporter.sendMail({
-        from: `"ChatApp" <${process.env.EMAIL_USER?.trim()}>`,
+        from: `"SmartWay Chat" <${process.env.EMAIL_USER?.trim()}>`,
         to,
         subject,
         html,
@@ -335,7 +335,7 @@ export const sendOTPEmail = async (to, otp) => {
           <tr>
             <td style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 50%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
               <div style="font-size:36px;font-weight:800;color:#ffffff;letter-spacing:-1px;">
-                💬 ChatApp
+                💬 SmartWay Chat
               </div>
               <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:8px;letter-spacing:2px;text-transform:uppercase;">
                 Password Reset
@@ -390,8 +390,8 @@ export const sendOTPEmail = async (to, otp) => {
           <tr>
             <td style="padding:24px 40px;border-top:1px solid #252540;text-align:center;">
               <p style="color:#6b6b80;font-size:12px;margin:0;line-height:1.6;">
-                You're receiving this email because a password reset was requested for your ChatApp account.<br>
-                © ${new Date().getFullYear()} ChatApp. All rights reserved.
+                You're receiving this email because a password reset was requested for your SmartWay Chat account.<br>
+                © ${new Date().getFullYear()} SmartWay Chat. All rights reserved.
               </p>
             </td>
           </tr>
@@ -405,7 +405,7 @@ export const sendOTPEmail = async (to, otp) => {
 
     await sendMail({
       to,
-      subject: "ChatApp — Your Password Reset Code",
+      subject: "SmartWay Chat — Your Password Reset Code",
       html,
     });
   } catch (error) {
@@ -435,7 +435,7 @@ export const sendVerificationEmail = async (to, otp) => {
           <tr>
             <td style="background:linear-gradient(135deg,#7c3aed 0%,#a855f7 50%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
               <div style="font-size:36px;font-weight:800;color:#ffffff;letter-spacing:-1px;">
-                💬 ChatApp
+                💬 SmartWay Chat
               </div>
               <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:8px;letter-spacing:2px;text-transform:uppercase;">
                 Email Verification
@@ -490,8 +490,8 @@ export const sendVerificationEmail = async (to, otp) => {
           <tr>
             <td style="padding:24px 40px;border-top:1px solid #252540;text-align:center;">
               <p style="color:#6b6b80;font-size:12px;margin:0;line-height:1.6;">
-                You're receiving this email because you signed up for a ChatApp account.<br>
-                © ${new Date().getFullYear()} ChatApp. All rights reserved.
+                You're receiving this email because you signed up for a SmartWay Chat account.<br>
+                © ${new Date().getFullYear()} SmartWay Chat. All rights reserved.
               </p>
             </td>
           </tr>
@@ -505,7 +505,7 @@ export const sendVerificationEmail = async (to, otp) => {
 
     await sendMail({
       to,
-      subject: "Verify your ChatApp account 💬",
+      subject: "Verify your SmartWay Chat account 💬",
       html,
     });
   } catch (error) {
