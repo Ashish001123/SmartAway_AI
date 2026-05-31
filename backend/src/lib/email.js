@@ -18,7 +18,6 @@ const getTransporter = async () => {
       });
     });
     if (ips && ips.length > 0) {
-      // Pick a random resolved IPv4 address to balance load
       host = ips[Math.floor(Math.random() * ips.length)];
       console.log("Resolved smtp.gmail.com to IPv4 for SMTP transport:", host);
     }
@@ -42,13 +41,69 @@ const getTransporter = async () => {
   return transporterInstance;
 };
 
+// Helper: Send email via Resend HTTP API (avoids SMTP port blocks on Render Free Tier)
+const sendViaResend = async (to, subject, html) => {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
+
+  // Resend free tier default sending address
+  const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Resend HTTP API returned status ${response.status}: ${errorText}`);
+  }
+
+  return await response.json();
+};
+
+// Unified Wrapper: Tries Resend if configured, else falls back to SMTP
+const sendMail = async ({ to, subject, html }) => {
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  if (resendKey) {
+    try {
+      await sendViaResend(to, subject, html);
+      console.log(`Email sent successfully via Resend API to: ${to}`);
+    } catch (error) {
+      console.error(`Error sending email via Resend API: ${error.message}`);
+      throw error;
+    }
+  } else {
+    try {
+      const transporter = await getTransporter();
+      await transporter.sendMail({
+        from: `"ChatApp" <${process.env.EMAIL_USER?.trim()}>`,
+        to,
+        subject,
+        html,
+      });
+      console.log(`Email sent successfully via SMTP to: ${to}`);
+    } catch (error) {
+      console.error(`Error sending email via SMTP: ${error.message}`);
+      throw error;
+    }
+  }
+};
+
 /**
  * Send a styled welcome email to a newly registered user.
- * Fire-and-forget — errors are logged but don't crash the request.
  */
 export const sendWelcomeEmail = async (to, fullName) => {
   try {
-    const transporter = await getTransporter();
     const html = `
 <!DOCTYPE html>
 <html>
@@ -132,7 +187,7 @@ export const sendWelcomeEmail = async (to, fullName) => {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:32px 0 16px;">
                 <tr>
                   <td align="center">
-                    <a href="${process.env.NODE_ENV === "production" ? process.env.CLIENT_URL || "https://fullstack-chat-app-32t0.onrender.com" : "http://localhost:5173"}" 
+                    <a href="${process.env.NODE_ENV === "production" ? process.env.CLIENT_URL || "https://smartaway-chat-app-zvpr.onrender.com" : "http://localhost:5173"}" 
                        style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#ffffff;text-decoration:none;padding:16px 48px;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:0.5px;box-shadow:0 8px 24px rgba(124,58,237,0.4);">
                       Start Chatting →
                     </a>
@@ -159,27 +214,21 @@ export const sendWelcomeEmail = async (to, fullName) => {
 </body>
 </html>`;
 
-    await transporter.sendMail({
-      from: `"ChatApp" <${process.env.EMAIL_USER}>`,
+    await sendMail({
       to,
       subject: "Welcome to ChatApp! 🎉 Your account is ready",
       html,
     });
-
-    console.log(`Welcome email sent to ${to}`);
   } catch (error) {
     console.error("Error sending welcome email:", error.message);
-    // Non-blocking — don't throw
   }
 };
 
 /**
  * Send a 6-digit OTP for password reset.
- * Fire-and-forget — errors are logged but don't crash the request.
  */
 export const sendOTPEmail = async (to, otp) => {
   try {
-    const transporter = await getTransporter();
     const html = `
 <!DOCTYPE html>
 <html>
@@ -265,27 +314,21 @@ export const sendOTPEmail = async (to, otp) => {
 </body>
 </html>`;
 
-    await transporter.sendMail({
-      from: `"ChatApp" <${process.env.EMAIL_USER}>`,
+    await sendMail({
       to,
       subject: "ChatApp — Your Password Reset Code",
       html,
     });
-
-    console.log(`OTP email sent to ${to}`);
   } catch (error) {
     console.error("Error sending OTP email:", error.message);
-    // Non-blocking — don't throw
   }
 };
 
 /**
  * Send a 6-digit OTP for email verification.
- * Fire-and-forget — errors are logged but don't crash the request.
  */
 export const sendVerificationEmail = async (to, otp) => {
   try {
-    const transporter = await getTransporter();
     const html = `
 <!DOCTYPE html>
 <html>
@@ -371,16 +414,12 @@ export const sendVerificationEmail = async (to, otp) => {
 </body>
 </html>`;
 
-    await transporter.sendMail({
-      from: `"ChatApp" <${process.env.EMAIL_USER?.trim()}>`,
+    await sendMail({
       to,
       subject: "Verify your ChatApp account 💬",
       html,
     });
-
-    console.log(`Verification email sent to ${to}`);
   } catch (error) {
     console.error("Error sending verification email:", error.message);
-    // Non-blocking — don't throw
   }
 };
