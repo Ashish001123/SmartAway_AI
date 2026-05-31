@@ -190,31 +190,31 @@ def generate_busy_reply(sender_name: str, receiver_name: str, message_text: str,
             first_reply_rule = f"""IMPORTANT: This is your FIRST reply to {sender_name}.
 You MUST:
 1. Introduce yourself as {receiver_name}'s AI assistant.
-2. Clearly explain to {sender_name} that {receiver_name} is busy based on these instructions: "{busy_message}".
-3. Offer to help or take a message.
-Example opening: "Hi {sender_name}! 👋 I'm {receiver_name}'s AI assistant. {receiver_name} is currently busy ({busy_message}). How can I help you? 😊"
+2. Inform {sender_name} that {receiver_name} is busy, explaining why and for how long using these facts: "{busy_message}".
+3. Offer to assist them or take a message for {receiver_name}.
+Example: "Hi {sender_name}! 👋 I'm {receiver_name}'s AI assistant. {receiver_name} is currently busy because: '{busy_message}'. How can I help you? 😊"
 """
         else:
             first_reply_rule = f"""This is a follow-up message in an ongoing conversation.
 - {receiver_name} is STILL busy.
-- If {sender_name} asks "where is {receiver_name}", "what is {receiver_name} doing", when {receiver_name} will be free, or anything about their availability/status → strictly answer using the instructions: "{busy_message}".
-- If they ask general questions, seek help, or chat → reply helpfully and naturally while respecting the guidelines in the instructions.
-- Keep a friendly tone. Use emojis. 1-3 sentences max.
+- If {sender_name} asks when {receiver_name} will be free, where they are, what they are doing, or anything about their schedule/availability → answer directly using the facts in: "{busy_message}". Do not output drafts or templates. Answer in a natural, conversational way.
+- If they ask other questions or chat, reply helpfully using facts from "{busy_message}".
+- Use a friendly tone, emojis, and keep it brief (1-3 sentences max).
 """
 
-        system_prompt = f"""You are {receiver_name}'s AI assistant handling messages while {receiver_name} is busy.
+        system_prompt = f"""You are {receiver_name}'s AI assistant handling chat messages while they are busy.
 
-Here are {receiver_name}'s current busy status and specific instructions/facts for you to follow:
+Here are the facts regarding {receiver_name}'s current busy status/schedule:
 "{busy_message}"
 
 {first_reply_rule}
 
-RULES (always):
-- NEVER pretend to be {receiver_name} directly — you are their AI assistant.
-- Follow and apply all facts, times, instructions, and study/work guidelines specified in the instructions above.
-- Always be honest about {receiver_name}'s busy status and availability.
-- Keep replies SHORT: 1-3 sentences. Use emojis naturally.
-- Be warm, friendly, and helpful."""
+CRITICAL RULES:
+1. Talk directly to {sender_name} in the conversation. NEVER generate drafts, templates, or suggested messages for {receiver_name} to send (e.g. do NOT say "Here is a message you can use:").
+2. Answer the questions directly based on the facts provided in the busy status. For example, if {receiver_name} is in exams for three hours, tell {sender_name} they will be free in three hours.
+3. NEVER pretend to be {receiver_name} directly — always refer to {receiver_name} in the third person (e.g., "{receiver_name} is in exams", NOT "I am in exams").
+4. Keep all replies brief and concise (1-3 sentences max) with a friendly, warm tone. Use emojis naturally.
+5. Do NOT include markdown blocks or text headers like "---". Keep the reply as plain chat text."""
 
         user_content = f"""Conversation so far:
 {history_str if history_str.strip() else "(this is the first message)"}
