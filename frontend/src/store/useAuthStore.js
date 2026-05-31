@@ -17,14 +17,18 @@ export const useAuthStore = create((set, get) => ({
   onlineUsers: [],
   socket: null,
 
+  // New states for Google OAuth and password reset
+  isGoogleLoggingIn: false,
+  isSendingOTP: false,
+  isResettingPassword: false,
+  isVerifyingEmail: false,
+  isResendingVerification: false,
 
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
       set({ authUser: res.data });
       get().connectSocket();
-
-
     } catch (error) {
       console.log("Error in checkAuth:", error);
       set({ authUser: null });
@@ -32,21 +36,26 @@ export const useAuthStore = create((set, get) => ({
       set({ isCheckingAuth: false });
     }
   },
-signup: async (data) => {
-  set({ isSigningUp: true });
-  try {
-    const res = await axiosInstance.post("/auth/signup", data);
-    set({ authUser: res.data });
-    toast.success("Account created successfully");
-    get().connectSocket();
 
-
-  } catch (error) {
-    toast.error(error?.response?.data?.message || "Signup failed. Try again.");
-  } finally {
-    set({ isSigningUp: false });
-  }
-},
+  signup: async (data) => {
+    set({ isSigningUp: true });
+    try {
+      const res = await axiosInstance.post("/auth/signup", data);
+      if (res.data.verificationRequired) {
+        toast.success("Verification code sent to your email!");
+        return { verificationRequired: true, email: res.data.email };
+      }
+      set({ authUser: res.data });
+      toast.success("Account created successfully");
+      get().connectSocket();
+      return { success: true };
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Signup failed. Try again.");
+      return { error: true };
+    } finally {
+      set({ isSigningUp: false });
+    }
+  },
 
   login: async (data) => {
     set({ isLoggingIn: true });
@@ -55,12 +64,88 @@ signup: async (data) => {
       set({ authUser: res.data });
       toast.success("Logged in successfully");
       get().connectSocket();
-
-
+      return { success: true };
     } catch (error) {
-      toast.error(error?.response?.data?.message || "login failed. Try again.");
+      if (error?.response?.status === 403 && error?.response?.data?.needsVerification) {
+        toast.error(error.response.data.message || "Email verification required.");
+        return { verificationRequired: true, email: error.response.data.email };
+      }
+      toast.error(error?.response?.data?.message || "Login failed. Try again.");
+      return { error: true };
     } finally {
       set({ isLoggingIn: false });
+    }
+  },
+
+  googleLogin: async (credential) => {
+    set({ isGoogleLoggingIn: true });
+    try {
+      const res = await axiosInstance.post("/auth/google", { credential });
+      set({ authUser: res.data });
+      toast.success("Signed in with Google");
+      get().connectSocket();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Google sign-in failed. Try again.");
+    } finally {
+      set({ isGoogleLoggingIn: false });
+    }
+  },
+
+  verifyEmail: async (email, otp) => {
+    set({ isVerifyingEmail: true });
+    try {
+      const res = await axiosInstance.post("/auth/verify-email", { email, otp });
+      set({ authUser: res.data });
+      toast.success("Email verified successfully! Welcome aboard.");
+      get().connectSocket();
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Verification failed");
+      return false;
+    } finally {
+      set({ isVerifyingEmail: false });
+    }
+  },
+
+  resendVerificationOTP: async (email) => {
+    set({ isResendingVerification: true });
+    try {
+      const res = await axiosInstance.post("/auth/resend-verification", { email });
+      toast.success("Verification code resent to your email");
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to resend code");
+      return false;
+    } finally {
+      set({ isResendingVerification: false });
+    }
+  },
+
+  forgotPassword: async (email) => {
+    set({ isSendingOTP: true });
+    try {
+      const res = await axiosInstance.post("/auth/forgot-password", { email });
+      toast.success("OTP sent to your email");
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to send OTP");
+      return false;
+    } finally {
+      set({ isSendingOTP: false });
+    }
+  },
+
+  resetPassword: async (email, otp, newPassword) => {
+    set({ isResettingPassword: true });
+    try {
+      const res = await axiosInstance.post("/auth/reset-password", { email, otp, newPassword });
+      toast.success("Password reset successfully! You can now log in.");
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to reset password");
+      return false;
+    } finally {
+      set({ isResettingPassword: false });
     }
   },
 
