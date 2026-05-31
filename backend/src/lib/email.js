@@ -1,16 +1,18 @@
 import nodemailer from "nodemailer";
 import dns from "dns";
 
-// Force Node to prefer IPv4 over IPv6 when resolving DNS.
-// This prevents ENETUNREACH errors on hosts (like Render/Heroku) that lack IPv6 routing.
+// Force Node to prefer IPv4 over IPv6 when resolving DNS globally.
 dns.setDefaultResultOrder("ipv4first");
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER?.trim(),
     pass: process.env.EMAIL_PASS?.trim(),
   },
+  family: 4, // Explicitly force Nodemailer to connect using IPv4
 });
 
 /**
