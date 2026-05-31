@@ -41,6 +41,44 @@ const getTransporter = async () => {
   return transporterInstance;
 };
 
+// Helper: Send email via Brevo HTTP API (avoids SMTP port blocks on Render Free Tier)
+const sendViaBrevo = async (to, subject, html) => {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) throw new Error("BREVO_API_KEY is not configured");
+
+  // Brevo requires a verified sender email address registered in your Brevo account
+  const senderEmail = process.env.EMAIL_USER?.trim() || "ashishkhatri006@gmail.com";
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "accept": "application/json",
+      "api-key": apiKey,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      sender: {
+        name: "ChatApp",
+        email: senderEmail,
+      },
+      to: [
+        {
+          email: to,
+        },
+      ],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Brevo HTTP API returned status ${response.status}: ${errorText}`);
+  }
+
+  return await response.json();
+};
+
 // Helper: Send email via Resend HTTP API (avoids SMTP port blocks on Render Free Tier)
 const sendViaResend = async (to, subject, html) => {
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -71,10 +109,20 @@ const sendViaResend = async (to, subject, html) => {
   return await response.json();
 };
 
-// Unified Wrapper: Tries Resend if configured, else falls back to SMTP
+// Unified Wrapper: Tries Brevo first, then Resend, else falls back to SMTP
 const sendMail = async ({ to, subject, html }) => {
+  const brevoKey = process.env.BREVO_API_KEY?.trim();
   const resendKey = process.env.RESEND_API_KEY?.trim();
-  if (resendKey) {
+
+  if (brevoKey) {
+    try {
+      await sendViaBrevo(to, subject, html);
+      console.log(`Email sent successfully via Brevo API to: ${to}`);
+    } catch (error) {
+      console.error(`Error sending email via Brevo API: ${error.message}`);
+      throw error;
+    }
+  } else if (resendKey) {
     try {
       await sendViaResend(to, subject, html);
       console.log(`Email sent successfully via Resend API to: ${to}`);
