@@ -25,11 +25,11 @@ class Query(BaseModel):
 
 @app.get("/")
 def home():
-    return {"api is running"}
-
-@app.get("/")
-def home():
     return {"message": "AI is running 🚀"}
+
+@app.get("/health")
+def health():
+    return {"status": "running"}
 
 @app.post("/chat")
 def chat(query: Query):
