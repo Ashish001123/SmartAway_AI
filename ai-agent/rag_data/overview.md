@@ -1,6 +1,6 @@
-# Chatty Application Overview
+# SmartWay AI Application Overview
 
-Chatty is a fullstack real-time chat application.
+SmartWay AI is a fullstack real-time chat application.
 
 It allows users to:
 - Create an account and log in

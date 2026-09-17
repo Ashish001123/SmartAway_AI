@@ -5,6 +5,9 @@ import crypto from "crypto";
 import cloudinary from "../lib/cloudinary.js";
 import { OAuth2Client } from "google-auth-library";
 import { sendWelcomeEmail, sendOTPEmail, sendVerificationEmail } from "../lib/email.js";
+import { warmUpAIService } from "../lib/ai.js";
+
+const BUSY_MESSAGE_MAX_LENGTH = 1000;
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -243,11 +246,21 @@ export const updateBusySettings = async (req, res) => {
     const { isBusy, busyMessage, busyStart, busyEnd, useAI } = req.body;
     const userId = req.user._id;
 
+    if (busyStart && busyEnd && new Date(busyEnd) <= new Date(busyStart)) {
+      return res.status(400).json({ message: "Busy end time must be after the start time" });
+    }
+    if (busyMessage && busyMessage.length > BUSY_MESSAGE_MAX_LENGTH) {
+      return res.status(400).json({ message: `Busy note must be under ${BUSY_MESSAGE_MAX_LENGTH} characters` });
+    }
+    if (isBusy) {
+      warmUpAIService();
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       {
         isBusy,
-        busyMessage,
+        busyMessage: busyMessage?.trim() ?? "",
         busyStart: busyStart ? new Date(busyStart) : null,
         busyEnd: busyEnd ? new Date(busyEnd) : null,
         useAI,

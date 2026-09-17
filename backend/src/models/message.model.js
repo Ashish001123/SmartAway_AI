@@ -18,6 +18,7 @@ const messageSchema = new mongoose.Schema(
     image: String,
     isRead: { type: Boolean, default: false },
     isAutoReply: { type: Boolean, default: false },
+    ownerNotified: { type: Boolean, default: false }, // auto-reply that notified the busy owner
 
     deletedFor: {
       type: [mongoose.Schema.Types.ObjectId], 

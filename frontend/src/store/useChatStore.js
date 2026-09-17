@@ -32,12 +32,20 @@ async function decryptMessageObj(message) {
   }
 }
 
+const appendMessage = (messages, message) =>
+  messages.some((m) => m._id === message._id) ? messages : [...messages, message];
+
+// Handlers registered for the open chat, kept so we remove only these and not other components' listeners
+let chatSocketHandlers = null;
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   users: [],
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
+  agentTyping: {}, // {chatPartnerId: {ownerId}} while a busy user's AI assistant is replying
+  notifyingOwnerId: null,
 
   getUsers: async () => {
     set({ isUsersLoading: true });
@@ -74,7 +82,7 @@ export const useChatStore = create((set, get) => ({
   },
 
   sendMessage: async (messageData) => {
-    const { selectedUser, messages } = get();
+    const { selectedUser } = get();
     try {
       let payload = { ...messageData };
 
@@ -105,7 +113,10 @@ export const useChatStore = create((set, get) => ({
       // Decrypt the response so our own sent message renders correctly
       const decrypted = await decryptMessageObj(res.data);
 
-      set({ messages: [...messages, decrypted] });
+      // An auto-reply can arrive over the socket before this resolves, so merge into the latest state
+      if (get().selectedUser?._id === selectedUser._id) {
+        set((state) => ({ messages: appendMessage(state.messages, decrypted) }));
+      }
       get().receiveMessage(res.data);
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to send message");
@@ -116,58 +127,88 @@ export const useChatStore = create((set, get) => ({
   subscribeToMessages: () => {
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
+    get().unsubscribeFromMessages();
 
-    socket.on("newMessage", async (newMessage) => {
-      const { selectedUser, messages } = get();
-      const authUser = useAuthStore.getState().authUser;
+    chatSocketHandlers = {
+      newMessage: async (newMessage) => {
+        const { selectedUser } = get();
+        const authUser = useAuthStore.getState().authUser;
 
-      const isFromSelectedUser = selectedUser && newMessage.senderId === selectedUser._id;
-      const isSentByMeToSelectedUser =
-        selectedUser &&
-        authUser &&
-        newMessage.senderId === authUser._id &&
-        newMessage.receiverId === selectedUser._id;
+        const isFromSelectedUser = selectedUser && newMessage.senderId === selectedUser._id;
+        const isSentByMeToSelectedUser =
+          selectedUser &&
+          authUser &&
+          newMessage.senderId === authUser._id &&
+          newMessage.receiverId === selectedUser._id;
 
-      if (isFromSelectedUser || isSentByMeToSelectedUser) {
-        // Decrypt before adding to state
-        const decrypted = await decryptMessageObj(newMessage);
-        const messageToAdd = isFromSelectedUser ? { ...decrypted, isRead: true } : decrypted;
-        set({ messages: [...messages, messageToAdd] });
-      }
+        if (isFromSelectedUser || isSentByMeToSelectedUser) {
+          // Decrypt before adding to state
+          const decrypted = await decryptMessageObj(newMessage);
+          const messageToAdd = isFromSelectedUser ? { ...decrypted, isRead: true } : decrypted;
+          if (get().selectedUser?._id === selectedUser._id) {
+            set((state) => ({ messages: appendMessage(state.messages, messageToAdd) }));
+          }
+        }
 
-      if (isFromSelectedUser) {
-        axiosInstance.put(`/messages/read/${selectedUser._id}`).catch(console.error);
-      }
-    });
+        if (isFromSelectedUser) {
+          axiosInstance.put(`/messages/read/${selectedUser._id}`).catch(console.error);
+        }
+      },
 
-    socket.on("messageReaction", ({ messageId, reactions }) => {
-      const { messages } = get();
-      set({
-        messages: messages.map((m) =>
-          m._id === messageId ? { ...m, reactions } : m
-        ),
-      });
-    });
-
-    socket.on("messagesRead", ({ senderId, receiverId }) => {
-      const { selectedUser, messages } = get();
-      if (selectedUser && selectedUser._id === receiverId) {
-        set({
-          messages: messages.map((m) =>
-            m.senderId === senderId && m.receiverId === receiverId
-              ? { ...m, isRead: true }
-              : m
+      messageReaction: ({ messageId, reactions }) => {
+        set((state) => ({
+          messages: state.messages.map((m) =>
+            m._id === messageId ? { ...m, reactions } : m
           ),
+        }));
+      },
+
+      messagesRead: ({ senderId, receiverId }) => {
+        const { selectedUser } = get();
+        if (selectedUser && selectedUser._id === receiverId) {
+          set((state) => ({
+            messages: state.messages.map((m) =>
+              m.senderId === senderId && m.receiverId === receiverId
+                ? { ...m, isRead: true }
+                : m
+            ),
+          }));
+        }
+      },
+
+      agentTyping: ({ chatWith, ownerId, isTyping }) => {
+        set((state) => {
+          const agentTyping = { ...state.agentTyping };
+          if (isTyping) agentTyping[chatWith] = { ownerId };
+          else delete agentTyping[chatWith];
+          return { agentTyping };
         });
-      }
-    });
+      },
+    };
+
+    Object.entries(chatSocketHandlers).forEach(([event, handler]) => socket.on(event, handler));
   },
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
-    socket?.off("newMessage");
-    socket?.off("messageReaction");
-    socket?.off("messagesRead");
+    if (socket && chatSocketHandlers) {
+      Object.entries(chatSocketHandlers).forEach(([event, handler]) => socket.off(event, handler));
+    }
+    chatSocketHandlers = null;
+  },
+
+  notifyOwner: async (ownerId) => {
+    set({ notifyingOwnerId: ownerId });
+    try {
+      const res = await axiosInstance.post(`/messages/notify/${ownerId}`);
+      if (get().selectedUser?._id === ownerId) {
+        set((state) => ({ messages: appendMessage(state.messages, res.data.message) }));
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't send the notification");
+    } finally {
+      set({ notifyingOwnerId: null });
+    }
   },
 
   receiveMessage: (message) =>

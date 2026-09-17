@@ -3,6 +3,7 @@ import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
+import { useNotificationStore } from "./useNotificationStore";
 // E2EE uses conversation-scoped keys derived on demand, no key generation needed here
 
 const BASE_URL =
@@ -156,6 +157,7 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: null });
       toast.success("Logged out successfully");
       get().disconnectSocket();
+      useNotificationStore.getState().clear();
     } catch (error) {
       toast.error(error.response.data.message);
     }
@@ -193,7 +195,8 @@ export const useAuthStore = create((set, get) => ({
 
   connectSocket: () => {
     const { authUser } = get();
-    if (!authUser || get().socket?.connected) return;
+    // `active` is already true while connecting, so a second call (e.g. StrictMode) doesn't open another socket
+    if (!authUser || get().socket?.active) return;
 
     // Request notification permission if not asked yet
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -247,10 +250,35 @@ export const useAuthStore = create((set, get) => ({
         }
       }
     });
+
+    // Someone asked your busy AI assistant to notify you
+    useNotificationStore.getState().fetchNotifications();
+    socket.on("ownerNotification", (notification) => {
+      useNotificationStore.getState().addNotification(notification);
+
+      const from = notification.fromUserId?.fullName || "Someone";
+      const title = `${notification.urgency === "urgent" ? "🚨 Urgent: " : "🔔 "}${from} needs you`;
+      toast(`${title}: ${notification.summary}`, { id: notification._id, duration: 8000 });
+
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        const browserNotification = new Notification(title, {
+          body: notification.summary,
+          icon: notification.fromUserId?.profilePic || "/avatar.png",
+          tag: notification._id,
+        });
+        browserNotification.onclick = () => {
+          window.focus();
+          if (notification.fromUserId?._id) {
+            useChatStore.getState().setSelectedUser(notification.fromUserId);
+          }
+        };
+      }
+    });
   },
   disconnectSocket: () => {
     if (get().socket?.connected) {
       get().socket.off("newMessage");
+      get().socket.off("ownerNotification");
       get().socket.disconnect();
     }
   },

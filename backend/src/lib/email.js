@@ -610,3 +610,95 @@ export const sendNewMessageEmail = async (to, receiverName, senderName, messageP
   }
 };
 
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+/**
+ * Email the busy owner when someone asks their AI assistant to notify them.
+ */
+export const sendOwnerNotificationEmail = async (to, ownerName, requesterName, summary, urgency) => {
+  try {
+    const isUrgent = urgency === "urgent";
+    const appUrl = process.env.NODE_ENV === "production"
+      ? process.env.CLIENT_URL || "https://smartaway-chat-app-zvpr.onrender.com"
+      : "http://localhost:5173";
+    const accent = isUrgent ? "#ef4444" : "#8b5cf6";
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0d0e15;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0d0e15;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color:#161722;border-radius:20px;overflow:hidden;border:1px solid #232537;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#6366f1 0%,${accent} 100%);padding:30px 40px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">
+                ${isUrgent ? "🚨 Urgent request" : "🔔 Your AI assistant needs you"}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 40px 30px;">
+              <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 16px;">
+                Hello ${escapeHtml(ownerName)},
+              </p>
+              <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 24px;">
+                While you were busy, <strong style="color:#ffffff;">${escapeHtml(requesterName)}</strong> asked your AI assistant to let you know they need you${isUrgent ? " <strong style=\"color:#fca5a5;\">urgently</strong>" : ""}:
+              </p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:32px;">
+                <tr>
+                  <td style="background-color:#1e2030;border-left:4px solid ${accent};border-radius:4px 12px 12px 4px;padding:20px;">
+                    <div style="color:#cbd5e1;font-size:15px;line-height:1.6;font-style:italic;">
+                      "${escapeHtml(summary)}"
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center">
+                    <a href="${appUrl}"
+                       style="display:inline-block;background:linear-gradient(135deg,#6366f1,${accent});color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:12px;font-size:15px;font-weight:700;">
+                      Reply to ${escapeHtml(requesterName)} &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px;border-top:1px solid #232537;text-align:center;background-color:#12131c;">
+              <p style="color:#64748b;font-size:11px;margin:0;line-height:1.6;">
+                You are receiving this because your AI auto-responder is on in SmartWay AI.<br>
+                &copy; ${new Date().getFullYear()} SmartWay AI. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await sendMail({
+      to,
+      subject: `${isUrgent ? "🚨 Urgent: " : "🔔 "}${requesterName} asked your AI assistant to notify you`,
+      html,
+    });
+  } catch (error) {
+    console.error("Error sending owner notification email:", error.message);
+  }
+};

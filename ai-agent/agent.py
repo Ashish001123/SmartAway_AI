@@ -1,165 +1,141 @@
-
-
-from dotenv import load_dotenv
-from openai import OpenAI
-from rag.rag import retrieve
-from mem0 import Memory
+import json
+import re
+import traceback
 import uuid
-import os
 
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-config = {
-    "vector_store": {
-        "provider": "qdrant",
-        "config": {
-            "host": "localhost",
-            "port": 6333
-        }
-    }
-}
+from llm import complete
+from rag.rag import retrieve
 
 try:
-    memory_client = Memory.from_config(config)
+    from mem0 import Memory
+
+    memory_client = Memory.from_config({
+        "vector_store": {
+            "provider": "qdrant",
+            "config": {
+                "host": "localhost",
+                "port": 6333
+            }
+        }
+    })
     print("✅ Memory client connected to Qdrant")
 except Exception as e:
     print(f"⚠️  Qdrant not available, memory disabled: {e}")
     memory_client = None
 
 SYSTEM_PROMPT = """
-You are an AI assistant for the Chatty application.
+You are the AI assistant for the SmartWay AI chat application.
 
 STRICT RULES:
-- First check Past Memory for personal questions (like name, preferences, etc.)
+- First check Past Memory and the recent conversation for personal questions (like name, preferences, etc.)
 - Acknowledge when the user shares personal facts, introduces themselves, or greets you.
-- Answer app questions from provided context (RAG)
+- Answer app questions from the provided Context (RAG)
 - Do NOT use your own knowledge for external facts.
 - If the user asks a question out of scope or not found in context/memory, say:
-  "I can only help with the chatty application information 😊"
+  "I can only help with the SmartWay AI application information 😊"
 
 FORMATTING RULES:
 - DO NOT use markdown (#, ##, ###)
-- Use emojis instead for headings 
+- Use emojis instead for headings
 - Use bullet points and spacing for clean UI
 - Keep answers short, clear, and helpful
 - Use friendly tone with emojis 😊
 """
 
+MAX_HISTORY_MESSAGES = 12
+
+
 def get_safe_user_id(user_id):
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, user_id))
 
+
 def improve_text(user_text: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an English assistant. "
-                        "Fix grammar, improve clarity, make it natural. "
-                        "Add relevant emojis. Keep it short and friendly."
-                        "Always give user 4 to 5 sentence of better english in seperated line and formated manner"
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": user_text
-                }
-            ],
-            max_tokens=150,
-            temperature=0.7
-        )
+    improved = complete(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You are an English assistant. "
+                    "Fix grammar, improve clarity, make it natural. "
+                    "Add relevant emojis. Keep it short and friendly. "
+                    "Always give user 4 to 5 sentence of better english in seperated line and formated manner"
+                )
+            },
+            {"role": "user", "content": user_text}
+        ],
+        max_tokens=300,
+        temperature=0.7
+    )
+    return f"✍️ Improved Text:\n{improved}"
 
-        improved = response.choices[0].message.content.strip()
-
-        return f"✍️ Improved Text:\n{improved}"
-
-    except Exception as e:
-        return f"Error: {str(e)}"
 
 def detect_intent(user_query: str) -> str:
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+        intent = complete(
+            [
                 {
                     "role": "system",
-                    "content": "Classify the intent as either 'improve_text' or 'chat_query'. Only return one word."
+                    "content": (
+                        "Classify the user's message. Reply with exactly one word: "
+                        "'improve_text' if they explicitly ask to fix, correct, rewrite or improve a piece of text they provided, "
+                        "otherwise 'chat_query'."
+                    )
                 },
-                {
-                    "role": "user",
-                    "content": user_query
-                }
+                {"role": "user", "content": user_query}
             ],
-            max_tokens=5
+            max_tokens=5,
+            temperature=0
         )
-
-        return response.choices[0].message.content.lower()
-
-    except:
+        return intent.lower()
+    except Exception:
         return "chat_query"
 
-def run_agent(user_query: str, user_id: str):
+
+def _search_memory(user_query: str, safe_user_id: str) -> str:
+    if memory_client is None:
+        return ""
     try:
-        safe_user_id = get_safe_user_id(user_id)
+        memories = memory_client.search(query=user_query, user_id=safe_user_id)
+    except Exception:
+        try:
+            memories = memory_client.get_all(user_id=safe_user_id)
+        except Exception:
+            return ""
 
-        intent = detect_intent(user_query)
-        if "improve" in intent or any(word in user_query.lower() for word in ["correct", "fix", "grammar", "rewrite"]):
-            return improve_text(user_query)
+    if isinstance(memories, dict) and "results" in memories:
+        memories = memories["results"]
+    if not isinstance(memories, list):
+        return ""
+    return "\n".join(
+        m.get("memory", m.get("text", "")) if isinstance(m, dict) else str(m) for m in memories
+    )
 
-        context_chunks = retrieve(user_query)
 
-        if not context_chunks:
-            context_chunks = retrieve("chatty application features messaging flow authentication")
+def run_agent(user_query: str, user_id: str, history: list = None) -> str:
+    """Answers AI Assistant chats. Raises on LLM failure so the caller can report it."""
+    safe_user_id = get_safe_user_id(user_id)
 
-        context = "\n\n".join(context_chunks) if isinstance(context_chunks, list) else context_chunks
+    if "improve_text" in detect_intent(user_query):
+        return improve_text(user_query)
 
-        if memory_client is not None:
-            try:
-                memories = memory_client.search(query=user_query, user_id=safe_user_id)
-            except Exception:
-                try:
-                    memories = memory_client.get_all(user_id=safe_user_id)
-                except Exception:
-                    memories = {}
-        else:
-            memories = {}
+    context = "\n\n".join(retrieve(user_query))
+    past_memory = _search_memory(user_query, safe_user_id)
 
-        if isinstance(memories, dict) and "results" in memories:
-            memories_list = memories["results"]
-        else:
-            memories_list = memories if isinstance(memories, list) else []
+    messages = [{
+        "role": "system",
+        "content": f"{SYSTEM_PROMPT}\nContext:\n{context}\n\nPast Memory:\n{past_memory or '(none)'}"
+    }]
+    for item in (history or [])[-MAX_HISTORY_MESSAGES:]:
+        role = item.get("role")
+        content = (item.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_query})
 
-        past_memory = "\n".join(
-            [m.get("memory", m.get("text", "")) if isinstance(m, dict) else str(m) for m in memories_list]
-        ) if memories_list else ""
+    reply = complete(messages, temperature=0.7)
 
-        prompt = f"""
-Context:
-{context}
-
-Past Memory:
-{past_memory}
-
-Question:
-{user_query}
-"""
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7
-        )
-
-        reply = response.choices[0].message.content
-
-        if memory_client is not None:
+    if memory_client is not None:
+        try:
             memory_client.add(
                 user_id=safe_user_id,
                 messages=[
@@ -167,74 +143,132 @@ Question:
                     {"role": "assistant", "content": reply}
                 ]
             )
+        except Exception:
+            traceback.print_exc()
 
-        return reply
+    return reply
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return "AI error"
 
-def generate_busy_reply(sender_name: str, receiver_name: str, message_text: str, busy_message: str, chat_history: list) -> str:
-    try:
+def _transcript_line(msg: dict, sender_name: str, receiver_name: str):
+    text = (msg.get("text") or "").strip()
+    if not text:
+        return None
+    role = msg.get("role")
+    if role is None:
+        # Older backend payloads label turns by name, marking the agent's turns with "(AI)"
+        label = msg.get("sender", "")
+        role = "assistant" if "(AI)" in label else "sender" if label == sender_name else "owner"
+    speaker = {
+        "sender": sender_name,
+        "assistant": "You (assistant)",
+        "owner": f"{receiver_name} (personally)",
+    }.get(role, sender_name)
+    return f"{speaker}: {text}"
 
-        history_str = ""
-        for msg in chat_history:
-            sender = msg.get("sender", "Unknown")
-            text = msg.get("text", "")
-            history_str += f"- {sender}: {text}\n"
 
-        is_first_reply = not any("(AI)" in msg.get("sender", "") for msg in chat_history)
-
-        if is_first_reply:
-            first_reply_rule = f"""IMPORTANT: This is your FIRST reply to {sender_name}.
-You MUST:
-1. Introduce yourself as {receiver_name}'s AI assistant.
-2. Inform {sender_name} that {receiver_name} is busy, explaining why and for how long using these facts: "{busy_message}".
-3. Offer to assist them or take a message for {receiver_name}.
-Example: "Hi {sender_name}! 👋 I'm {receiver_name}'s AI assistant. {receiver_name} is currently busy because: '{busy_message}'. How can I help you? 😊"
-"""
-        else:
-            first_reply_rule = f"""This is a follow-up message in an ongoing conversation.
-- {receiver_name} is STILL busy.
-- If {sender_name} asks when {receiver_name} will be free, where they are, what they are doing, or anything about their schedule/availability → answer directly using the facts in: "{busy_message}". Do not output drafts or templates. Answer in a natural, conversational way.
-- If they ask other questions or chat, reply helpfully using facts from "{busy_message}".
-- Use a friendly tone, emojis, and keep it brief (1-3 sentences max).
-"""
-
-        system_prompt = f"""You are {receiver_name}'s AI assistant handling chat messages while they are busy.
-
-Here are the facts regarding {receiver_name}'s current busy status/schedule:
-"{busy_message}"
-
-{first_reply_rule}
-
-CRITICAL RULES:
-1. Talk directly to {sender_name} in the conversation. NEVER generate drafts, templates, or suggested messages for {receiver_name} to send (e.g. do NOT say "Here is a message you can use:").
-2. Answer the questions directly based on the facts provided in the busy status. For example, if {receiver_name} is in exams for three hours, tell {sender_name} they will be free in three hours.
-3. NEVER pretend to be {receiver_name} directly — always refer to {receiver_name} in the third person (e.g., "{receiver_name} is in exams", NOT "I am in exams").
-4. Keep all replies brief and concise (1-3 sentences max) with a friendly, warm tone. Use emojis naturally.
-5. Do NOT include markdown blocks or text headers like "---". Keep the reply as plain chat text."""
-
-        user_content = f"""Conversation so far:
-{history_str if history_str.strip() else "(this is the first message)"}
-
-{sender_name} just said: "{message_text}"
-
-Write your reply:"""
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.75,
-            max_tokens=120
+def _busy_agent_prompt(sender: str, owner: str, busy_note: str, busy_until: str,
+                       is_first_reply: bool, owner_recently_notified: bool) -> str:
+    note = f'"{busy_note}"' if busy_note else "(no note left)"
+    if is_first_reply:
+        turn_rule = (
+            f"This is your first message to {sender} since {owner} became busy: briefly introduce yourself as "
+            f"{owner}'s AI assistant, say {owner} is busy (and when they'll be free, if known), respond to what "
+            f"{sender} said, and mention you can notify {owner} if it's urgent."
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print("Error in generate_busy_reply:", e)
-        # Use a safe, clean fallback message that doesn't leak raw prompt instructions
-        clean_busy = busy_message if len(busy_message) < 60 else "at the moment"
-        return f"Hey {sender_name}! 👋 I'm {receiver_name}'s AI assistant. {receiver_name} is currently busy ({clean_busy}). I'll pass your message along! 😊"
+    else:
+        turn_rule = (
+            "You've already introduced yourself in this conversation, so don't do it again. "
+            "Just continue the conversation naturally."
+        )
+    notified_rule = (
+        f"- {owner} was already notified about this conversation a few minutes ago. Don't set notify_owner again "
+        f"unless {sender} raises something new and urgent; reassure them that {owner} already knows instead.\n"
+        if owner_recently_notified else ""
+    )
+
+    return f"""You are {owner}'s personal AI assistant inside the SmartWay AI chat app. {owner} is busy right now, so you are chatting with {sender} on {owner}'s behalf.
+
+What you know about {owner}'s availability:
+- Note from {owner}: {note}
+- Free again: {busy_until or "not specified"}
+
+How to chat:
+- Hold a real, natural conversation with {sender}: answer their questions, reply to small talk, and help with general questions like a friendly, capable assistant would.
+- Use {owner}'s note to answer anything about their availability, whereabouts or schedule, and follow any instructions {owner} left in it (for example what to tell people about a topic). Don't paste the note word for word.
+- Never make up facts about {owner} (plans, opinions, location, promises) that the note doesn't cover. If you don't know, say so and offer to pass the question on.
+- Never agree to anything on {owner}'s behalf (meetings, payments, favours, deadlines). Offer to notify {owner} instead.
+- You are the assistant, not {owner}: always refer to {owner} in the third person.
+- Keep every reply short (1-3 sentences), warm and in plain chat text: no markdown, at most one or two emojis. Reply in the language {sender} writes in.
+
+Notifying {owner}:
+- You can send {owner} an instant notification. Set "notify_owner" to true only when {sender} asks you to tell, notify, inform or ping {owner}, says it's urgent or an emergency, or accepts your offer to notify {owner}.
+- When you set it, write one sentence describing what {sender} needs in "summary", set "urgency" to "urgent" if it's time-sensitive, and confirm in your reply that {owner} has been notified.
+- If {sender} needs {owner} personally or the matter sounds important, offer to notify {owner}, but don't notify without being asked.
+{notified_rule}
+{turn_rule}
+
+Respond with a JSON object only, in exactly this shape:
+{{"reply": "<your message to {sender}>", "notify_owner": false, "urgency": "normal", "summary": ""}}"""
+
+
+def _parse_agent_output(content: str) -> dict:
+    data = None
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+    if not isinstance(data, dict):
+        # The model ignored the JSON format; its text is still a usable reply
+        return {"reply": content.strip(), "notify_owner": False, "urgency": "normal", "summary": ""}
+
+    reply = str(data.get("reply") or "").strip()
+    if not reply:
+        raise ValueError(f"Busy agent returned no reply: {content[:200]}")
+    notify = data.get("notify_owner") is True or str(data.get("notify_owner")).lower() == "true"
+    return {
+        "reply": reply,
+        "notify_owner": notify,
+        "urgency": "urgent" if str(data.get("urgency")).lower() == "urgent" else "normal",
+        "summary": str(data.get("summary") or "").strip()[:300] if notify else "",
+    }
+
+
+def generate_busy_reply(sender_name: str, receiver_name: str, message_text: str, busy_message: str,
+                        chat_history: list, is_first_reply: bool = None, busy_until_text: str = None,
+                        owner_recently_notified: bool = False) -> dict:
+    """Replies to someone messaging a busy user. Raises on LLM failure so the backend can fall back."""
+    lines = [_transcript_line(msg, sender_name, receiver_name) for msg in chat_history if isinstance(msg, dict)]
+    transcript = "\n".join(line for line in lines if line)
+
+    if is_first_reply is None:
+        is_first_reply = not any(
+            msg.get("role") == "assistant" or "(AI)" in msg.get("sender", "")
+            for msg in chat_history if isinstance(msg, dict)
+        )
+
+    system_prompt = _busy_agent_prompt(
+        sender_name, receiver_name, (busy_message or "").strip(), busy_until_text,
+        is_first_reply, owner_recently_notified,
+    )
+    user_content = f"""Conversation so far (oldest first):
+{transcript or "(no earlier messages)"}
+
+New message from {sender_name}:
+{message_text.strip() or "(empty message)"}"""
+
+    content = complete(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+        temperature=0.7,
+        max_tokens=350,
+        response_format={"type": "json_object"},
+    )
+    return _parse_agent_output(content)

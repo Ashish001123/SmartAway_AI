@@ -3,6 +3,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { axiosInstance } from "../lib/axios";
 import { useAIStore } from "../store/ai.store";
+import { isUserBusy } from "../lib/utils";
 
 const ChatHeader = () => {
   const { selectedUser, setSelectedUser, clearChat } = useChatStore();
@@ -14,7 +15,9 @@ const ChatHeader = () => {
 
   const handleDeleteChat = async () => {
     if (isAI) {
-      useAIStore.setState({ messages: [] });
+      if (window.confirm("Clear your conversation with the AI Assistant?")) {
+        await useAIStore.getState().clearHistory();
+      }
       return;
     }
 
@@ -61,6 +64,11 @@ const ChatHeader = () => {
                 : onlineUsers.includes(selectedUser._id)
                 ? "Online"
                 : "Offline"} 
+              {!isAI && isUserBusy(selectedUser) && (
+                <span className="text-warning">
+                  {selectedUser.useAI === false ? " · Busy" : " · Busy, AI assistant replying"}
+                </span>
+              )}
             </p>
             {!isAI && (
               <p className="text-[10px] text-emerald-500 flex items-center gap-1 font-medium mt-0.5 select-none">

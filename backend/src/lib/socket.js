@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import http from "http";
 import express from "express";
+import { warmUpAIService } from "./ai.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -19,23 +20,35 @@ const io = new Server(server, {
   },
 });
 
-export function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
-}
+// Every socket joins a room named after its user id, so emitting to that room reaches all of the
+// user's tabs. Counting sockets keeps a user online until their last tab disconnects, even when a
+// reconnect lands before the old socket's disconnect.
+const userSocketCount = new Map(); // {userId: number of open sockets}
 
-const userSocketMap = {}; 
+export function getReceiverSocketId(userId) {
+  const id = userId?.toString();
+  return userSocketCount.has(id) ? id : undefined;
+}
 
 io.on("connection", (socket) => {
   console.log("A user connected", socket.id);
 
   const userId = socket.handshake.query.userId;
-  if (userId) userSocketMap[userId] = socket.id;
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  if (userId) {
+    socket.join(userId);
+    userSocketCount.set(userId, (userSocketCount.get(userId) || 0) + 1);
+  }
+  io.emit("getOnlineUsers", [...userSocketCount.keys()]);
+  warmUpAIService();
 
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
-    delete userSocketMap[userId];
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    if (userId) {
+      const remaining = (userSocketCount.get(userId) || 1) - 1;
+      if (remaining > 0) userSocketCount.set(userId, remaining);
+      else userSocketCount.delete(userId);
+    }
+    io.emit("getOnlineUsers", [...userSocketCount.keys()]);
   });
 });
 

@@ -1,12 +1,12 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
-import axios from "axios";
-import crypto from "crypto";
 
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import { sendNewMessageEmail } from "../lib/email.js";
+import { decryptText } from "../lib/e2ee.js";
+import { isUserBusy, handleMessageToBusyUser, requestNotificationFromSender } from "../lib/busyAgent.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -74,149 +74,6 @@ export const getMessages = async (req, res) => {
   } catch (error) {
     console.log("Error in getMessages:", error.message);
     res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-const isUserBusy = (user) => {
-  if (!user) return false;
-  if (!user.isBusy) return false; 
-  if (user.busyStart && user.busyEnd) {
-    const now = new Date();
-    return now >= new Date(user.busyStart) && now <= new Date(user.busyEnd);
-  }
-  return true; 
-};
-
-// Helper to decrypt E2EE text messages on the backend for AI Auto-Reply processing
-function decryptText(b64Ciphertext, senderId, receiverId) {
-  try {
-    if (!b64Ciphertext) return "";
-    const cacheKey = [senderId.toString(), receiverId.toString()].sort().join("|");
-    const key = crypto.createHash("sha256").update(cacheKey).digest();
-    
-    const buffer = Buffer.from(b64Ciphertext, "base64");
-    if (buffer.length < 28) {
-      return "";
-    }
-    
-    const iv = buffer.subarray(0, 12);
-    const encryptedData = buffer.subarray(12);
-    
-    const ciphertext = encryptedData.subarray(0, encryptedData.length - 16);
-    const authTag = encryptedData.subarray(encryptedData.length - 16);
-    
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(authTag);
-    
-    const decrypted = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final()
-    ]);
-    
-    return decrypted.toString("utf8");
-  } catch (err) {
-    console.error("Backend E2EE decryption failed:", err.message);
-    return "";
-  }
-}
-
-const triggerAutoReply = async (senderId, receiverUser, incomingText) => {
-  try {
-    const receiverId = receiverUser._id.toString();
-    const senderIdStr = senderId.toString();
-
-    const lastAutoReply = await Message.findOne({
-      senderId: receiverId,
-      receiverId: senderIdStr,
-      isAutoReply: true,
-    }).sort({ createdAt: -1 });
-
-    if (lastAutoReply) {
-      const diffSecs = (new Date() - new Date(lastAutoReply.createdAt)) / 1000;
-      if (diffSecs < 3) {
-        console.log("Auto-reply skipped (duplicate within 3s)");
-        return;
-      }
-    }
-
-    const senderUser = await User.findById(senderIdStr);
-    const senderName = senderUser ? senderUser.fullName : "User";
-    const receiverName = receiverUser.fullName;
-
-    let replyText = "";
-    if (receiverUser.useAI) {
-      try {
-        
-        const history = await Message.find({
-          $or: [
-            { senderId: senderIdStr, receiverId: receiverId },
-            { senderId: receiverId, receiverId: senderIdStr },
-          ],
-        })
-          .sort({ createdAt: -1 })
-          .limit(20)
-          .lean();
-
-        const chatHistory = history.reverse().map(m => {
-          let msgText = m.text || "";
-          if (m.encryptedText) {
-            msgText = decryptText(m.encryptedText, m.senderId, m.receiverId) || "";
-          }
-          return {
-            sender: m.senderId.toString() === senderIdStr ? senderName : receiverName + (m.isAutoReply ? " (AI)" : ""),
-            text: msgText,
-          };
-        });
-
-        let AI_URL = process.env.NODE_ENV === "production"
-          ? (process.env.AI_URL_PROD ? process.env.AI_URL_PROD : "http://127.0.0.1:8000/busy-reply")
-          : "http://127.0.0.1:8000/busy-reply";
-
-        if (AI_URL && !AI_URL.startsWith("http")) {
-          AI_URL = `https://${AI_URL}`;
-        }
-        if (AI_URL && !AI_URL.endsWith("/busy-reply")) {
-          AI_URL = `${AI_URL.replace("/chat", "").replace(/\/$/, "")}/busy-reply`;
-        }
-
-        const response = await axios.post(AI_URL, {
-          senderName,
-          receiverName,
-          messageText: incomingText,
-          busyMessage: receiverUser.busyMessage || "I'm currently busy.",
-          chatHistory
-        });
-
-        replyText = response.data?.result || (receiverUser.busyMessage || "I am currently busy. I will get back to you later.");
-      } catch (err) {
-        console.error("Failed to generate AI auto-reply, falling back to static:", err.message);
-        replyText = receiverUser.busyMessage || "I am currently busy. I will get back to you later.";
-      }
-    } else {
-      replyText = receiverUser.busyMessage || "I am currently busy. I will get back to you later.";
-    }
-
-    const autoReplyMessage = new Message({
-      senderId: receiverId,
-      receiverId: senderIdStr,
-      text: replyText,
-      isAutoReply: true,
-      isRead: false,
-    });
-
-    await autoReplyMessage.save();
-
-    const senderSocketId = getReceiverSocketId(senderIdStr);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("newMessage", autoReplyMessage);
-    }
-
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", autoReplyMessage);
-    }
-  } catch (error) {
-    console.error("Error in triggerAutoReply:", error);
   }
 };
 
@@ -298,12 +155,7 @@ export const sendMessage = async (req, res) => {
     try {
       const receiver = await User.findById(receiverId);
       if (receiver && isUserBusy(receiver)) {
-        let plaintextText = text;
-        if (encryptedText) {
-          plaintextText = decryptText(encryptedText, senderId, receiverId);
-        }
-        // Auto-reply uses plaintext since server generates the text
-        triggerAutoReply(senderId, receiver, plaintextText || "");
+        handleMessageToBusyUser(receiverId, senderId);
       }
     } catch (err) {
       console.error("Error in busy check during sendMessage:", err);
@@ -313,6 +165,31 @@ export const sendMessage = async (req, res) => {
   } catch (error) {
     console.log("Error in sendMessage:", error.message);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// The sender asks a busy user's AI assistant to notify them
+export const requestOwnerNotification = async (req, res) => {
+  try {
+    const { id: ownerId } = req.params;
+
+    if (!mongoose.isValidObjectId(ownerId) || ownerId === req.user._id.toString()) {
+      return res.status(400).json({ message: "Invalid user" });
+    }
+
+    const owner = await User.findById(ownerId);
+    if (!owner) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (!isUserBusy(owner)) {
+      return res.status(409).json({ message: `${owner.fullName} is available now, just send them a message.` });
+    }
+
+    const result = await requestNotificationFromSender(req.user, owner);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error in requestOwnerNotification:", error.message);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 

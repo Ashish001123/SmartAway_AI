@@ -1,64 +1,59 @@
 import express from "express";
-import axios from "axios";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
 const router = express.Router();
 import mongoose from "mongoose";
 import { sendMessage as mainSendMessage } from "../controllers/message.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js"
+import { callAIService } from "../lib/ai.js";
+
+const AI_USER_ID = "ai_assistant";
+const HISTORY_FOR_CONTEXT = 20;
+
+const aiConversation = (userId) => ({
+  $or: [
+    { senderId: userId, receiverId: AI_USER_ID },
+    { senderId: AI_USER_ID, receiverId: userId },
+  ],
+});
 
 router.post("/", protectRoute, async (req, res) => {
   try {
-    const { text } = req.body;
+    const message = req.body.text?.trim();
+    if (!message) {
+      return res.status(400).json({ error: "Message text is required" });
+    }
     const userId = req.user._id.toString(); 
 
-    const message = text;
-
-    const history = await Message.find({
-      $or: [
-        { senderId: userId, receiverId: "ai_assistant" },
-        { senderId: "ai_assistant", receiverId: userId },
-      ],
-    })
+    const recent = await Message.find(aiConversation(userId))
       .sort({ createdAt: -1 })
-      .limit(20)
+      .limit(HISTORY_FOR_CONTEXT)
       .lean();
 
-    const messages = history.reverse().map((m) => ({
-      role: m.senderId === "ai_assistant" ? "assistant" : "user",
+    const history = recent.reverse().filter((m) => m.text).map((m) => ({
+      role: m.senderId === AI_USER_ID ? "assistant" : "user",
       content: m.text,
     }));
 
-    messages.push({ role: "user", content: message });
-
-    let AI_URL =
-      process.env.NODE_ENV === "production"
-        ? process.env.AI_URL_PROD
-        : process.env.AI_URL;
-
-    if (AI_URL && !AI_URL.startsWith("http")) {
-      AI_URL = `https://${AI_URL}`;
+    let reply;
+    try {
+      const data = await callAIService("/chat", { message, userId, history });
+      reply = data?.result;
+      if (!reply) throw new Error("empty reply");
+    } catch (error) {
+      // Log the real cause server-side; don't store a failed exchange in the chat history
+      console.error("AI assistant request failed:", error.message);
+      return res.status(502).json({ error: "The AI assistant is unavailable right now. Please try again in a moment." });
     }
-    if (AI_URL && !AI_URL.endsWith("/chat")) {
-      AI_URL = `${AI_URL.replace(/\/$/, "")}/chat`;
-    }
-
-    const aiRes = await axios.post(AI_URL, {
-      message : message,
-      userId: userId, 
-    });
-    console.log("✅ AI RESPONSE:", aiRes.data);
-
-    const reply = aiRes.data.result;
 
     await Message.create({
       senderId: userId,
-      receiverId: "ai_assistant",
+      receiverId: AI_USER_ID,
       text: message,
     });
 
     await Message.create({
-      senderId: "ai_assistant",
+      senderId: AI_USER_ID,
       receiverId: userId,
       text: reply,
     });
@@ -68,6 +63,34 @@ router.post("/", protectRoute, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "AI failed" });
+  }
+});
+
+router.get("/history", protectRoute, async (req, res) => {
+  try {
+    const messages = await Message.find(aiConversation(req.user._id.toString()))
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json(messages.reverse().map((m) => ({
+      role: m.senderId === AI_USER_ID ? "assistant" : "user",
+      content: m.text,
+      createdAt: m.createdAt,
+    })));
+  } catch (e) {
+    console.error("AI history error", e);
+    res.status(500).json({ error: "failed" });
+  }
+});
+
+router.delete("/history", protectRoute, async (req, res) => {
+  try {
+    await Message.deleteMany(aiConversation(req.user._id.toString()));
+    res.json({ success: true });
+  } catch (e) {
+    console.error("AI history delete error", e);
+    res.status(500).json({ error: "failed" });
   }
 });
 

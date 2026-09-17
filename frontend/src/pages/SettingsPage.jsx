@@ -117,7 +117,7 @@ const SettingsPage = () => {
               <div>
                 <h3 className="text-lg font-semibold">Scheduled AI Auto-Responder Agent</h3>
                 <p className="text-sm text-base-content/70">
-                  Deploy an AI agent to auto-reply to users when you are busy.
+                  Deploy an AI agent that chats with people while you are busy and notifies you when they need you.
                 </p>
               </div>
             </div>
@@ -166,9 +166,10 @@ const SettingsPage = () => {
                     className="textarea textarea-bordered h-32 text-sm leading-relaxed"
                     placeholder={
                       useAI
-                        ? "Tell the AI agent what you are doing (e.g. 'I am in a meeting until 2 PM. Tell them to message me later. If they ask about the app release, say it is tomorrow.')"
+                        ? "Tell the AI agent what you are doing (e.g. 'I am in a meeting until 2 PM. If they ask about the app release, say it is tomorrow. Notify me if anyone mentions the server.')"
                         : "Enter a static message to reply back to users when they message you..."
                     }
+                    maxLength={1000}
                     value={busyMessage}
                     onChange={(e) => setBusyMessage(e.target.value)}
                   />
@@ -241,7 +242,9 @@ const SettingsPage = () => {
                 <div className="alert bg-base-200 border border-base-300 text-xs p-3 flex items-start gap-2 mt-4 rounded-lg">
                   <AlertTriangle className="size-4 text-warning flex-shrink-0 mt-0.5" />
                   <span className="leading-relaxed">
-                    When enabled, contacts messaging you will receive an automatic response. Auto-replies are rate-limited to once every 5 minutes per contact.
+                    {useAI
+                      ? "When enabled, your AI agent chats with anyone who messages you, answering from your note. If they ask it to notify you or say it's urgent, you get an in-app alert and an email. They can also tap \"Notify\" themselves."
+                      : "When enabled, contacts messaging you receive your static message, at most once every 5 minutes per contact. They can tap \"Notify\" to send you an in-app alert and an email."}
                   </span>
                 </div>
               </div>

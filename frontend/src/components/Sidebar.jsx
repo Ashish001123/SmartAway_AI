@@ -7,6 +7,7 @@ import SidebarSkeleton from "./skeletons/SidebarSkeleton";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { axiosInstance } from "../lib/axios";
+import { isUserBusy } from "../lib/utils";
 
 const AI_USER = {
   _id: "ai_assistant",
@@ -25,7 +26,7 @@ const Sidebar = () => {
     receiveMessage,
   } = useChatStore();
 
-  const { onlineUsers, socket } = useAuthStore();
+  const { onlineUsers, socket, authUser } = useAuthStore();
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
 
   useEffect(() => {
@@ -79,7 +80,7 @@ const Sidebar = () => {
             <span className="text-sm">Show online only</span>
           </label>
           <span className="text-xs text-zinc-500">
-            ({onlineUsers.length - 1} online)
+            ({onlineUsers.filter((id) => id !== authUser?._id).length} online)
           </span>
         </div>
       </div>
@@ -154,6 +155,7 @@ const Sidebar = () => {
               <div className="font-medium truncate">{user.fullName}</div>
               <div className="text-sm text-zinc-400">
                 {onlineUsers.includes(user._id) ? "Online" : "Offline"}
+                {isUserBusy(user) && <span className="text-warning"> · Busy</span>}
               </div>
             </div>
 

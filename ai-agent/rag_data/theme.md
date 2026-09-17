@@ -1,4 +1,4 @@
-Theme Customization in Chatty
+Theme Customization in SmartWay AI
 
 - Users can change UI themes
 - Multiple themes available (Light, Dark, Cyberpunk, etc.)
