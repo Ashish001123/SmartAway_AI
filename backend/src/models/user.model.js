@@ -62,6 +62,25 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // Where alerts are delivered, besides in-app
+    notifyChannels: {
+      email: { type: Boolean, default: true },
+      telegram: { type: Boolean, default: true },
+      push: { type: Boolean, default: true },
+    },
+    telegramChatId: {
+      type: String,
+      default: null,
+    },
+    telegramLinkCode: {
+      type: String,
+      default: null,
+      index: { sparse: true },
+    },
+    telegramLinkCodeExpiry: {
+      type: Date,
+      default: null,
+    },
     publicKey: {
       type: String,
       default: null,

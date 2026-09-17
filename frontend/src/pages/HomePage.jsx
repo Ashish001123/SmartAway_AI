@@ -1,12 +1,23 @@
 import { useChatStore } from "../store/useChatStore";
 import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar";
 import NoChatSelected from "../components/NoChatSelected";
 import ChatContainer from "../components/ChatContainer";
 
 const HomePage = () => {
-  const { selectedUser, setSelectedUser } = useChatStore();
+  const { selectedUser, setSelectedUser, users } = useChatStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Alerts link to /?chat=<userId> so tapping one opens that conversation
+  const chatParam = searchParams.get("chat");
+  useEffect(() => {
+    if (!chatParam || users.length === 0) return;
+    const contact = users.find((u) => u._id === chatParam);
+    if (contact) setSelectedUser(contact);
+    setSearchParams({}, { replace: true });
+  }, [chatParam, users, setSelectedUser, setSearchParams]);
 
   useEffect(() => {
     return () => {

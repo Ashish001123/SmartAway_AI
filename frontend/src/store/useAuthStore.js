@@ -270,6 +270,11 @@ export const useAuthStore = create((set, get) => ({
       }
     });
 
+    socket.on("telegramStatus", ({ connected }) => {
+      set((state) => ({ authUser: state.authUser && { ...state.authUser, telegramConnected: connected } }));
+      if (connected) toast.success("Telegram connected");
+    });
+
     // Someone asked your busy AI assistant to notify you
     useNotificationStore.getState().fetchNotifications();
     socket.on("ownerNotification", (notification) => {
@@ -298,6 +303,7 @@ export const useAuthStore = create((set, get) => ({
     if (get().socket?.connected) {
       get().socket.off("newMessage");
       get().socket.off("ownerNotification");
+      get().socket.off("telegramStatus");
       get().socket.disconnect();
     }
   },

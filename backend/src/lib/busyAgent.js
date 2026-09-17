@@ -6,6 +6,7 @@ import { callAIService } from "./ai.js";
 import { decryptText } from "./e2ee.js";
 import { sendOwnerNotificationEmail } from "./email.js";
 import { getContactFacts, rememberFact } from "./contactMemory.js";
+import { deliverAlert } from "./alerts.js";
 
 const HISTORY_LIMIT = 20;
 // The agent re-introduces itself if it hasn't replied in this conversation for this long
@@ -131,9 +132,14 @@ export const notifyOwner = async ({ owner, requester, summary, urgency = "normal
     },
   });
 
-  if (owner.email) {
-    sendOwnerNotificationEmail(owner.email, owner.fullName, requester.fullName, notification.summary, urgency);
-  }
+  deliverAlert(owner, {
+    title: `${urgency === "urgent" ? "🚨 Urgent: " : "🔔 "}${requester.fullName} needs you`,
+    body: notification.summary,
+    path: `/?chat=${requester._id}`,
+    tag: `notify-${requester._id}`,
+    email: () =>
+      sendOwnerNotificationEmail(owner.email, owner.fullName, requester.fullName, notification.summary, urgency),
+  });
 
   return { alreadyNotified: false };
 };

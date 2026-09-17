@@ -4,6 +4,7 @@ import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../constants";
 import { Send, Bot, Clock, MessageSquare, AlertTriangle } from "lucide-react";
 import AgentRulesCard from "../components/AgentRulesCard";
+import AlertsCard from "../components/AlertsCard";
 import { browserTimeZone } from "../lib/utils";
 
 const PERSONAS = [
@@ -301,6 +302,8 @@ const SettingsPage = () => {
         )}
 
         {authUser && <AgentRulesCard />}
+
+        {authUser && <AlertsCard />}
 
         <div>
           <h3 className="text-lg font-semibold mb-3">Preview</h3>

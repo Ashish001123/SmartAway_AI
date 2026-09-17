@@ -35,6 +35,8 @@ const userResponse = (user) => ({
   timezone: user.timezone,
   contactRules: user.contactRules,
   urgentKeywords: user.urgentKeywords,
+  notifyChannels: user.notifyChannels,
+  telegramConnected: Boolean(user.telegramChatId),
 });
 
 // ─── SIGNUP (email/password) ─────────────────────────────────────────────────
@@ -259,7 +261,7 @@ export const updateBusySettings = async (req, res) => {
   try {
     const {
       isBusy, busyMessage, busyStart, busyEnd, useAI,
-      agentPersona, timezone, contactRules, urgentKeywords,
+      agentPersona, timezone, contactRules, urgentKeywords, notifyChannels,
     } = req.body;
     const update = {};
 
@@ -317,6 +319,17 @@ export const updateBusySettings = async (req, res) => {
         });
       }
       update.urgentKeywords = keywords;
+    }
+
+    if (notifyChannels !== undefined) {
+      if (typeof notifyChannels !== "object" || notifyChannels === null) {
+        return res.status(400).json({ message: "Invalid alert channels" });
+      }
+      for (const channel of ["email", "telegram", "push"]) {
+        if (notifyChannels[channel] !== undefined) {
+          update[`notifyChannels.${channel}`] = Boolean(notifyChannels[channel]);
+        }
+      }
     }
 
     if (update.isBusy) {
