@@ -2,26 +2,39 @@ import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import mongoose from "mongoose";
 import cloudinary from "../lib/cloudinary.js";
 import { OAuth2Client } from "google-auth-library";
 import { sendWelcomeEmail, sendOTPEmail, sendVerificationEmail } from "../lib/email.js";
 import { warmUpAIService } from "../lib/ai.js";
+import { isValidTimeZone } from "../lib/availability.js";
 
 const BUSY_MESSAGE_MAX_LENGTH = 1000;
+const AGENT_PERSONAS = ["friendly", "professional", "funny"];
+const CONTACT_RULES = ["always_notify", "urgent", "static_only"];
+const MAX_CONTACT_RULES = 100;
+const MAX_URGENT_KEYWORDS = 20;
+const MAX_KEYWORD_LENGTH = 40;
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// ─── Helper: standard user response shape ────────────────────────────────────
+// ─── Helper: the logged-in user's own view of their account ─────────────────
+// Every endpoint that returns authUser uses this, so secrets like OTP hashes never reach the client
 const userResponse = (user) => ({
   _id: user._id,
   fullName: user.fullName,
   email: user.email,
   profilePic: user.profilePic,
+  createdAt: user.createdAt,
   isBusy: user.isBusy,
   busyMessage: user.busyMessage,
   busyStart: user.busyStart,
   busyEnd: user.busyEnd,
   useAI: user.useAI,
+  agentPersona: user.agentPersona,
+  timezone: user.timezone,
+  contactRules: user.contactRules,
+  urgentKeywords: user.urgentKeywords,
 });
 
 // ─── SIGNUP (email/password) ─────────────────────────────────────────────────
@@ -223,7 +236,7 @@ export const updateProfile = async (req, res) => {
       { new: true }
     );
 
-    res.status(200).json(updatedUser);
+    res.status(200).json(userResponse(updatedUser));
   } catch (error) {
     console.log("error in update profile:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -233,18 +246,22 @@ export const updateProfile = async (req, res) => {
 // ─── CHECK AUTH ──────────────────────────────────────────────────────────────
 export const checkAuth = (req, res) => {
   try {
-    res.status(200).json(req.user);
+    res.status(200).json(userResponse(req.user));
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
-// ─── UPDATE BUSY SETTINGS ───────────────────────────────────────────────────
+// ─── UPDATE BUSY / AGENT SETTINGS ───────────────────────────────────────────
+// Partial update: only fields present in the body change
 export const updateBusySettings = async (req, res) => {
   try {
-    const { isBusy, busyMessage, busyStart, busyEnd, useAI } = req.body;
-    const userId = req.user._id;
+    const {
+      isBusy, busyMessage, busyStart, busyEnd, useAI,
+      agentPersona, timezone, contactRules, urgentKeywords,
+    } = req.body;
+    const update = {};
 
     if (busyStart && busyEnd && new Date(busyEnd) <= new Date(busyStart)) {
       return res.status(400).json({ message: "Busy end time must be after the start time" });
@@ -252,23 +269,63 @@ export const updateBusySettings = async (req, res) => {
     if (busyMessage && busyMessage.length > BUSY_MESSAGE_MAX_LENGTH) {
       return res.status(400).json({ message: `Busy note must be under ${BUSY_MESSAGE_MAX_LENGTH} characters` });
     }
-    if (isBusy) {
+
+    if (isBusy !== undefined) update.isBusy = Boolean(isBusy);
+    if (busyMessage !== undefined) update.busyMessage = String(busyMessage ?? "").trim();
+    if (busyStart !== undefined) update.busyStart = busyStart ? new Date(busyStart) : null;
+    if (busyEnd !== undefined) update.busyEnd = busyEnd ? new Date(busyEnd) : null;
+    if (useAI !== undefined) update.useAI = Boolean(useAI);
+
+    if (agentPersona !== undefined) {
+      if (!AGENT_PERSONAS.includes(agentPersona)) {
+        return res.status(400).json({ message: "Invalid agent personality" });
+      }
+      update.agentPersona = agentPersona;
+    }
+
+    if (timezone !== undefined) {
+      if (typeof timezone !== "string" || !isValidTimeZone(timezone)) {
+        return res.status(400).json({ message: "Invalid time zone" });
+      }
+      update.timezone = timezone;
+    }
+
+    if (contactRules !== undefined) {
+      if (!Array.isArray(contactRules) || contactRules.length > MAX_CONTACT_RULES) {
+        return res.status(400).json({ message: "Invalid contact rules" });
+      }
+      const rulesByContact = new Map();
+      for (const { contactId, rule } of contactRules) {
+        if (!mongoose.isValidObjectId(contactId) || !CONTACT_RULES.includes(rule)) {
+          return res.status(400).json({ message: "Invalid contact rule" });
+        }
+        rulesByContact.set(contactId.toString(), rule);
+      }
+      update.contactRules = [...rulesByContact].map(([contactId, rule]) => ({ contactId, rule }));
+    }
+
+    if (urgentKeywords !== undefined) {
+      if (!Array.isArray(urgentKeywords)) {
+        return res.status(400).json({ message: "Invalid urgent keywords" });
+      }
+      const keywords = [...new Set(
+        urgentKeywords.map((k) => String(k).trim().toLowerCase()).filter(Boolean)
+      )];
+      if (keywords.length > MAX_URGENT_KEYWORDS || keywords.some((k) => k.length > MAX_KEYWORD_LENGTH)) {
+        return res.status(400).json({
+          message: `Use up to ${MAX_URGENT_KEYWORDS} keywords, each under ${MAX_KEYWORD_LENGTH} characters`,
+        });
+      }
+      update.urgentKeywords = keywords;
+    }
+
+    if (update.isBusy) {
       warmUpAIService();
     }
 
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      {
-        isBusy,
-        busyMessage: busyMessage?.trim() ?? "",
-        busyStart: busyStart ? new Date(busyStart) : null,
-        busyEnd: busyEnd ? new Date(busyEnd) : null,
-        useAI,
-      },
-      { new: true }
-    ).select("-password");
+    const updatedUser = await User.findByIdAndUpdate(req.user._id, update, { new: true });
 
-    res.status(200).json(updatedUser);
+    res.status(200).json(userResponse(updatedUser));
   } catch (error) {
     console.log("error in update busy settings:", error);
     res.status(500).json({ message: "Internal server error" });

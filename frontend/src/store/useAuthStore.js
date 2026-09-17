@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
 import { useNotificationStore } from "./useNotificationStore";
+import { browserTimeZone } from "../lib/utils.js";
 // E2EE uses conversation-scoped keys derived on demand, no key generation needed here
 
 const BASE_URL =
@@ -30,6 +31,7 @@ export const useAuthStore = create((set, get) => ({
       const res = await axiosInstance.get("/auth/check");
       set({ authUser: res.data });
       get().connectSocket();
+      get().syncTimeZone();
     } catch (error) {
       console.log("Error in checkAuth:", error);
       set({ authUser: null });
@@ -49,6 +51,7 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       toast.success("Account created successfully");
       get().connectSocket();
+      get().syncTimeZone();
       return { success: true };
     } catch (error) {
       toast.error(error?.response?.data?.message || "Signup failed. Try again.");
@@ -65,6 +68,7 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       toast.success("Logged in successfully");
       get().connectSocket();
+      get().syncTimeZone();
       return { success: true };
     } catch (error) {
       if (error?.response?.status === 403 && error?.response?.data?.needsVerification) {
@@ -85,6 +89,7 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       toast.success("Signed in with Google");
       get().connectSocket();
+      get().syncTimeZone();
     } catch (error) {
       toast.error(error?.response?.data?.message || "Google sign-in failed. Try again.");
     } finally {
@@ -99,6 +104,7 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       toast.success("Email verified successfully! Welcome aboard.");
       get().connectSocket();
+      get().syncTimeZone();
       return true;
     } catch (error) {
       toast.error(error?.response?.data?.message || "Verification failed");
@@ -183,13 +189,26 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.put("/auth/busy-settings", data);
       set({ authUser: res.data });
-      toast.success("Busy settings updated successfully");
+      toast.success("Settings saved");
       return res.data;
     } catch (error) {
       console.log("error in update busy settings:", error);
       toast.error(error.response?.data?.message || "Failed to update settings");
     } finally {
       set({ isUpdatingBusySettings: false });
+    }
+  },
+
+  // The agent offers callback times in the owner's local time, so keep the account's time zone current
+  syncTimeZone: async () => {
+    const timezone = browserTimeZone();
+    const { authUser } = get();
+    if (!authUser || authUser.timezone === timezone) return;
+    try {
+      const res = await axiosInstance.put("/auth/busy-settings", { timezone });
+      set({ authUser: res.data });
+    } catch (error) {
+      console.error("Failed to sync time zone:", error);
     }
   },
 

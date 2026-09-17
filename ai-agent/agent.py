@@ -44,6 +44,12 @@ FORMATTING RULES:
 
 MAX_HISTORY_MESSAGES = 12
 
+PERSONA_STYLES = {
+    "friendly": "warm and friendly, with at most one or two emojis",
+    "professional": "polite, clear and professional, with no emojis or slang",
+    "funny": "light-hearted and playful, with a little humour where it fits, but still helpful and never rude",
+}
+
 
 def get_safe_user_id(user_id):
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, user_id))
@@ -166,9 +172,12 @@ def _transcript_line(msg: dict, sender_name: str, receiver_name: str):
     return f"{speaker}: {text}"
 
 
-def _busy_agent_prompt(sender: str, owner: str, busy_note: str, busy_until: str,
-                       is_first_reply: bool, owner_recently_notified: bool) -> str:
+def _busy_agent_prompt(sender: str, owner: str, busy_note: str, busy_until: str, is_first_reply: bool,
+                       owner_recently_notified: bool, auto_notified_reason: str, persona: str,
+                       contact_memory: list) -> str:
     note = f'"{busy_note}"' if busy_note else "(no note left)"
+    style = PERSONA_STYLES.get(persona, PERSONA_STYLES["friendly"])
+
     if is_first_reply:
         turn_rule = (
             f"This is your first message to {sender} since {owner} became busy: briefly introduce yourself as "
@@ -180,10 +189,25 @@ def _busy_agent_prompt(sender: str, owner: str, busy_note: str, busy_until: str,
             "You've already introduced yourself in this conversation, so don't do it again. "
             "Just continue the conversation naturally."
         )
-    notified_rule = (
-        f"- {owner} was already notified about this conversation a few minutes ago. Don't set notify_owner again "
-        f"unless {sender} raises something new and urgent; reassure them that {owner} already knows instead.\n"
-        if owner_recently_notified else ""
+
+    if auto_notified_reason:
+        notified_rule = (
+            f"- {owner} has just been notified automatically because {auto_notified_reason}. Tell {sender} that "
+            f"{owner} has been alerted, and leave notify_owner false.\n"
+        )
+    elif owner_recently_notified:
+        notified_rule = (
+            f"- {owner} was already notified about this conversation a few minutes ago. Don't set notify_owner again "
+            f"unless {sender} raises something new and urgent; reassure them that {owner} already knows instead.\n"
+        )
+    else:
+        notified_rule = ""
+
+    facts = [str(fact).strip() for fact in contact_memory or [] if str(fact).strip()]
+    memory_block = (
+        f"\nWhat you remember about {sender} from earlier conversations (use it to follow up naturally, don't recite it):\n"
+        + "\n".join(f"- {fact}" for fact in facts) + "\n"
+        if facts else ""
     )
 
     return f"""You are {owner}'s personal AI assistant inside the SmartWay AI chat app. {owner} is busy right now, so you are chatting with {sender} on {owner}'s behalf.
@@ -191,24 +215,27 @@ def _busy_agent_prompt(sender: str, owner: str, busy_note: str, busy_until: str,
 What you know about {owner}'s availability:
 - Note from {owner}: {note}
 - Free again: {busy_until or "not specified"}
-
+{memory_block}
 How to chat:
-- Hold a real, natural conversation with {sender}: answer their questions, reply to small talk, and help with general questions like a friendly, capable assistant would.
+- Hold a real, natural conversation with {sender}: answer their questions, reply to small talk, and help with general questions like a capable assistant would.
 - Use {owner}'s note to answer anything about their availability, whereabouts or schedule, and follow any instructions {owner} left in it (for example what to tell people about a topic). Don't paste the note word for word.
 - Never make up facts about {owner} (plans, opinions, location, promises) that the note doesn't cover. If you don't know, say so and offer to pass the question on.
 - Never agree to anything on {owner}'s behalf (meetings, payments, favours, deadlines). Offer to notify {owner} instead.
 - You are the assistant, not {owner}: always refer to {owner} in the third person.
-- Keep every reply short (1-3 sentences), warm and in plain chat text: no markdown, at most one or two emojis. Reply in the language {sender} writes in.
+- Keep every reply short (1-3 sentences) in plain chat text with no markdown. Your tone is {style}. Reply in the language {sender} writes in.
 
 Notifying {owner}:
 - You can send {owner} an instant notification. Set "notify_owner" to true only when {sender} asks you to tell, notify, inform or ping {owner}, says it's urgent or an emergency, or accepts your offer to notify {owner}.
 - When you set it, write one sentence describing what {sender} needs in "summary", set "urgency" to "urgent" if it's time-sensitive, and confirm in your reply that {owner} has been notified.
 - If {sender} needs {owner} personally or the matter sounds important, offer to notify {owner}, but don't notify without being asked.
 {notified_rule}
+Remembering:
+- If {sender} shares something worth remembering for future conversations (what they need, a deadline, what they're waiting for), put it in "remember" as one short sentence about {sender}. Otherwise leave it empty. Don't repeat things you already remember.
+
 {turn_rule}
 
 Respond with a JSON object only, in exactly this shape:
-{{"reply": "<your message to {sender}>", "notify_owner": false, "urgency": "normal", "summary": ""}}"""
+{{"reply": "<your message to {sender}>", "notify_owner": false, "urgency": "normal", "summary": "", "remember": ""}}"""
 
 
 def _parse_agent_output(content: str) -> dict:
@@ -225,7 +252,7 @@ def _parse_agent_output(content: str) -> dict:
 
     if not isinstance(data, dict):
         # The model ignored the JSON format; its text is still a usable reply
-        return {"reply": content.strip(), "notify_owner": False, "urgency": "normal", "summary": ""}
+        return {"reply": content.strip(), "notify_owner": False, "urgency": "normal", "summary": "", "remember": ""}
 
     reply = str(data.get("reply") or "").strip()
     if not reply:
@@ -236,12 +263,14 @@ def _parse_agent_output(content: str) -> dict:
         "notify_owner": notify,
         "urgency": "urgent" if str(data.get("urgency")).lower() == "urgent" else "normal",
         "summary": str(data.get("summary") or "").strip()[:300] if notify else "",
+        "remember": str(data.get("remember") or "").strip()[:200],
     }
 
 
 def generate_busy_reply(sender_name: str, receiver_name: str, message_text: str, busy_message: str,
                         chat_history: list, is_first_reply: bool = None, busy_until_text: str = None,
-                        owner_recently_notified: bool = False) -> dict:
+                        owner_recently_notified: bool = False, auto_notified_reason: str = None,
+                        agent_persona: str = "friendly", contact_memory: list = None) -> dict:
     """Replies to someone messaging a busy user. Raises on LLM failure so the backend can fall back."""
     lines = [_transcript_line(msg, sender_name, receiver_name) for msg in chat_history if isinstance(msg, dict)]
     transcript = "\n".join(line for line in lines if line)
@@ -254,7 +283,7 @@ def generate_busy_reply(sender_name: str, receiver_name: str, message_text: str,
 
     system_prompt = _busy_agent_prompt(
         sender_name, receiver_name, (busy_message or "").strip(), busy_until_text,
-        is_first_reply, owner_recently_notified,
+        is_first_reply, owner_recently_notified, auto_notified_reason, agent_persona, contact_memory,
     )
     user_content = f"""Conversation so far (oldest first):
 {transcript or "(no earlier messages)"}

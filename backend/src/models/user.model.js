@@ -40,6 +40,28 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    agentPersona: {
+      type: String,
+      enum: ["friendly", "professional", "funny"],
+      default: "friendly",
+    },
+    timezone: {
+      type: String,
+      default: "UTC",
+    },
+    // How the busy agent treats specific contacts
+    contactRules: [
+      {
+        _id: false,
+        contactId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        rule: { type: String, enum: ["always_notify", "urgent", "static_only"], required: true },
+      },
+    ],
+    // Messages containing any of these notify the owner as urgent
+    urgentKeywords: {
+      type: [String],
+      default: [],
+    },
     publicKey: {
       type: String,
       default: null,

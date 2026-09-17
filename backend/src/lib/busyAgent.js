@@ -5,6 +5,7 @@ import { getReceiverSocketId, io } from "./socket.js";
 import { callAIService } from "./ai.js";
 import { decryptText } from "./e2ee.js";
 import { sendOwnerNotificationEmail } from "./email.js";
+import { getContactFacts, rememberFact } from "./contactMemory.js";
 
 const HISTORY_LIMIT = 20;
 // The agent re-introduces itself if it hasn't replied in this conversation for this long
@@ -142,6 +143,25 @@ const fallbackReply = (owner, sender, timeLeft) => {
   return `Hi ${firstName(sender)}! 👋 ${owner.fullName} is busy right now.${when} If it's urgent, tap "Notify ${firstName(owner)}" and I'll let them know.`;
 };
 
+const contactRule = (owner, contactId) =>
+  owner.contactRules?.find((r) => r.contactId.toString() === contactId)?.rule;
+
+const findUrgentKeyword = (owner, texts) => {
+  const haystack = texts.join("\n").toLowerCase();
+  return owner.urgentKeywords?.find((keyword) => haystack.includes(keyword.toLowerCase()));
+};
+
+// Returns true when the owner was (or had recently been) notified
+const tryNotifyOwner = async (details) => {
+  try {
+    await notifyOwner(details);
+    return true;
+  } catch (error) {
+    console.error("Failed to notify owner:", error);
+    return false;
+  }
+};
+
 // Returns the createdAt of the newest message handled, so a follow-up pass knows what's been answered
 const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
   const [owner, sender] = await Promise.all([User.findById(ownerId), User.findById(senderId)]);
@@ -159,30 +179,63 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
   const agentAlreadyReplied =
     lastOwnerMessage?.isAutoReply && new Date(lastOwnerMessage.createdAt).getTime() >= sessionStart;
 
-  if (!owner.useAI) {
+  const rule = contactRule(owner, senderId);
+  const unansweredTexts = unanswered.map(messageText).filter(Boolean);
+  const latestText = unansweredTexts[unansweredTexts.length - 1] || "";
+  const timeLeft = describeTimeLeft(owner.busyEnd);
+
+  // Urgent keywords and contact rules alert the owner without waiting for the agent to decide
+  const keyword = findUrgentKeyword(owner, unansweredTexts);
+  let autoNotify = null;
+  if (keyword) {
+    autoNotify = {
+      reason: `the message mentions "${keyword}"`,
+      urgency: "urgent",
+      summary: `Mentioned "${keyword}": ${latestText}`,
+    };
+  } else if (!agentAlreadyReplied && (rule === "always_notify" || rule === "urgent")) {
+    autoNotify = {
+      reason: `${owner.fullName} asked to be told whenever ${sender.fullName} messages`,
+      urgency: rule === "urgent" ? "urgent" : "normal",
+      summary: latestText || `${sender.fullName} messaged you`,
+    };
+  }
+  const autoNotified = autoNotify
+    ? await tryNotifyOwner({ owner, requester: sender, summary: autoNotify.summary, urgency: autoNotify.urgency })
+    : false;
+
+  if (!owner.useAI || rule === "static_only") {
     const lastAutoReply = earlier.findLast((m) => m.isAutoReply);
-    if (lastAutoReply && Date.now() - new Date(lastAutoReply.createdAt) < STATIC_REPLY_COOLDOWN_MS) {
-      return handledUpTo;
-    }
-    const text = owner.busyMessage?.trim() || fallbackReply(owner, sender, describeTimeLeft(owner.busyEnd));
-    await postAutoReply({ owner, senderId, text });
+    const inCooldown =
+      lastAutoReply && Date.now() - new Date(lastAutoReply.createdAt) < STATIC_REPLY_COOLDOWN_MS;
+    if (inCooldown && !autoNotified) return handledUpTo;
+
+    let text = owner.busyMessage?.trim() || fallbackReply(owner, sender, timeLeft);
+    if (autoNotified) text += ` (${firstName(owner)} has been notified.)`;
+    await postAutoReply({ owner, senderId, text, ownerNotified: autoNotified });
     return handledUpTo;
   }
 
-  const timeLeft = describeTimeLeft(owner.busyEnd);
   let replyText;
-  let notifyRequest = null;
+  let agentOutput = null;
 
   setAgentTyping(ownerId, senderId, true);
   try {
+    const [recentNotification, contactMemory] = await Promise.all([
+      findRecentNotification(owner, sender),
+      getContactFacts(owner._id, sender._id),
+    ]);
     const data = await callAIService("/busy-reply", {
       senderName: sender.fullName,
       receiverName: owner.fullName,
-      messageText: unanswered.map(messageText).filter(Boolean).join("\n"),
+      messageText: unansweredTexts.join("\n"),
       busyMessage: owner.busyMessage || "",
       busyUntilText: timeLeft,
       isFirstReply: !agentAlreadyReplied,
-      ownerRecentlyNotified: Boolean(await findRecentNotification(owner, sender)),
+      ownerRecentlyNotified: Boolean(recentNotification),
+      autoNotifiedReason: autoNotified ? autoNotify.reason : null,
+      agentPersona: owner.agentPersona || "friendly",
+      contactMemory,
       chatHistory: earlier
         .map((m) => ({
           role: m.senderId.toString() === senderId ? "sender" : m.isAutoReply ? "assistant" : "owner",
@@ -192,7 +245,7 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
     });
     if (!data?.result) throw new Error("empty reply");
     replyText = data.result;
-    if (data.notifyOwner) notifyRequest = data;
+    agentOutput = data;
   } catch (error) {
     // Never fall back to the owner's note in AI mode: it holds private instructions for the agent
     console.error("Busy agent reply failed, sending fallback:", error.message);
@@ -201,20 +254,20 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
     setAgentTyping(ownerId, senderId, false);
   }
 
-  let ownerNotified = false;
-  if (notifyRequest) {
-    try {
-      const lastText = messageText(unanswered[unanswered.length - 1]);
-      await notifyOwner({
-        owner,
-        requester: sender,
-        summary: notifyRequest.summary?.trim() || lastText || `${sender.fullName} wants to reach you`,
-        urgency: notifyRequest.urgency === "urgent" ? "urgent" : "normal",
-      });
-      ownerNotified = true;
-    } catch (error) {
-      console.error("Failed to notify owner:", error);
-    }
+  let ownerNotified = autoNotified;
+  if (agentOutput?.notifyOwner && !autoNotified) {
+    ownerNotified = await tryNotifyOwner({
+      owner,
+      requester: sender,
+      summary: agentOutput.summary?.trim() || latestText || `${sender.fullName} wants to reach you`,
+      urgency: rule === "urgent" || agentOutput.urgency === "urgent" ? "urgent" : "normal",
+    });
+  }
+
+  if (agentOutput?.remember) {
+    rememberFact(owner._id, sender._id, agentOutput.remember).catch((error) =>
+      console.error("Failed to save contact memory:", error)
+    );
   }
 
   await postAutoReply({ owner, senderId, text: replyText, ownerNotified });
@@ -266,7 +319,8 @@ export const requestNotificationFromSender = async (requester, owner) => {
     ? recentTexts.join(" / ")
     : `${requester.fullName} wants to talk to you`;
 
-  const { alreadyNotified } = await notifyOwner({ owner, requester, summary });
+  const urgency = contactRule(owner, requesterId) === "urgent" ? "urgent" : "normal";
+  const { alreadyNotified } = await notifyOwner({ owner, requester, summary, urgency });
   const text = alreadyNotified
     ? `${owner.fullName} has already been notified about your messages and will get back to you as soon as they can 🙏`
     : `Done! 🔔 I've notified ${owner.fullName}. They'll get back to you as soon as they're free.`;

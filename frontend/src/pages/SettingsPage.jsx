@@ -3,6 +3,14 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../constants";
 import { Send, Bot, Clock, MessageSquare, AlertTriangle } from "lucide-react";
+import AgentRulesCard from "../components/AgentRulesCard";
+import { browserTimeZone } from "../lib/utils";
+
+const PERSONAS = [
+  { value: "friendly", label: "😊 Friendly" },
+  { value: "professional", label: "💼 Professional" },
+  { value: "funny", label: "😄 Funny" },
+];
 
 const PREVIEW_MESSAGES = [
   { id: 1, content: "Hey! How's it going?", isSent: false },
@@ -18,12 +26,14 @@ const SettingsPage = () => {
   const [busyMessage, setBusyMessage] = useState("");
   const [busyStart, setBusyStart] = useState("");
   const [busyEnd, setBusyEnd] = useState("");
+  const [agentPersona, setAgentPersona] = useState("friendly");
 
   useEffect(() => {
     if (authUser) {
       setIsBusy(authUser.isBusy || false);
       setUseAI(authUser.useAI !== false);
       setBusyMessage(authUser.busyMessage || "");
+      setAgentPersona(authUser.agentPersona || "friendly");
       if (authUser.busyStart) {
         
         const start = new Date(authUser.busyStart);
@@ -51,6 +61,8 @@ const SettingsPage = () => {
       busyStart: busyStart ? new Date(busyStart).toISOString() : null,
       busyEnd: busyEnd ? new Date(busyEnd).toISOString() : null,
       useAI,
+      agentPersona,
+      timezone: browserTimeZone(),
     });
   };
 
@@ -154,6 +166,24 @@ const SettingsPage = () => {
                     />
                   </label>
                 </div>
+
+                {useAI && (
+                  <div className="form-control">
+                    <span className="label-text font-medium mb-2">Agent personality</span>
+                    <div className="join w-full">
+                      {PERSONAS.map((p) => (
+                        <button
+                          key={p.value}
+                          type="button"
+                          className={`btn btn-sm join-item flex-1 ${agentPersona === p.value ? "btn-primary" : "btn-outline"}`}
+                          onClick={() => setAgentPersona(p.value)}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="form-control">
                   <label className="label">
@@ -269,6 +299,8 @@ const SettingsPage = () => {
             </div>
           </div>
         )}
+
+        {authUser && <AgentRulesCard />}
 
         <div>
           <h3 className="text-lg font-semibold mb-3">Preview</h3>

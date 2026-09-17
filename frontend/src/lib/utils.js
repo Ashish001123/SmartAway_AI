@@ -13,3 +13,11 @@ export function isUserBusy(user, now = new Date()) {
   if (user.busyEnd && now > new Date(user.busyEnd)) return false;
   return true;
 }
+
+export function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
