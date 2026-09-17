@@ -12,6 +12,8 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false # Render will ask you to input this value
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
 
   # 2. Backend & Frontend Service (Node.js)
   - type: web
@@ -46,4 +48,17 @@ services:
           type: web
           name: smartaway-chat-app
           property: host
+      # Optional integrations (leave empty to disable)
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
 
