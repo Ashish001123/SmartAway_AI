@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar";
-import AwayDigestModal from "../components/AwayDigestModal";
 import { useDigestStore } from "../store/useDigestStore";
 import { useAuthStore } from "../store/useAuthStore";
 import NoChatSelected from "../components/NoChatSelected";
@@ -54,7 +53,6 @@ const HomePage = () => {
             <Sidebar />
 
             {!selectedUser ? <NoChatSelected /> : <ChatContainer />}
-            <AwayDigestModal />
           </div>
         </div>
       </div>

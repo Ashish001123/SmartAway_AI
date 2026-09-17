@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, CalendarClock, MessageSquare, Send, X } from "lucide-react";
 import { useDigestStore } from "../store/useDigestStore";
 import { useChatStore } from "../store/useChatStore";
@@ -13,6 +14,7 @@ const PRIORITY_BADGES = {
 const DigestItem = ({ item }) => {
   const { sendReply, dismissItem, sendingContactId, close } = useDigestStore();
   const { setSelectedUser } = useChatStore();
+  const navigate = useNavigate();
   const [reply, setReply] = useState(item.suggestedReply);
   const isSending = sendingContactId === item.contactId;
 
@@ -57,6 +59,7 @@ const DigestItem = ({ item }) => {
           onClick={() => {
             setSelectedUser(item.contact);
             close();
+            navigate("/");
           }}
         >
           <MessageSquare size={14} /> Open chat

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
-import { LogOut, MessageSquare, Settings, User } from "lucide-react";
+import { Bot, LogOut, Settings, User } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 
 const Navbar = () => {
@@ -40,6 +40,11 @@ const Navbar = () => {
             {authUser && (
               <>
                 <NotificationBell />
+
+                <Link to={"/agent"} className={`btn btn-sm gap-2`}>
+                  <Bot className="size-5" />
+                  <span className="hidden sm:inline">Agent</span>
+                </Link>
 
                 <Link to={"/profile"} className={`btn btn-sm gap-2`}>
                   <User className="size-5" />

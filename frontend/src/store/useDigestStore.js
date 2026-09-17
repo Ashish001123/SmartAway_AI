@@ -13,19 +13,22 @@ export const useDigestStore = create((set, get) => ({
   lastFetchedAt: 0,
   sendingContactId: null,
 
+  // Resolves true when there's a summary to show
   fetchDigest: async ({ force = false } = {}) => {
-    if (get().isLoading) return;
-    if (!force && Date.now() - get().lastFetchedAt < REFRESH_THROTTLE_MS) return;
+    if (get().isLoading) return false;
+    if (!force && Date.now() - get().lastFetchedAt < REFRESH_THROTTLE_MS) return false;
     set({ isLoading: true, lastFetchedAt: Date.now() });
     try {
       const res = await axiosInstance.get("/agent/digest");
       if (res.data.available && res.data.items.length) {
         set({ items: res.data.items, isOpen: true });
-      } else {
-        set({ items: [] });
+        return true;
       }
+      set({ items: [] });
+      return false;
     } catch (error) {
       console.error("Failed to load away summary:", error);
+      return false;
     } finally {
       set({ isLoading: false });
     }
