@@ -46,6 +46,8 @@ export const useChatStore = create((set, get) => ({
   isMessagesLoading: false,
   agentTyping: {}, // {chatPartnerId: {ownerId}} while a busy user's AI assistant is replying
   notifyingOwnerId: null,
+  callbacks: [], // upcoming callbacks where I'm the owner or the requester
+  isBookingCallback: false,
 
   getUsers: async () => {
     set({ isUsersLoading: true });
@@ -195,6 +197,62 @@ export const useChatStore = create((set, get) => ({
       Object.entries(chatSocketHandlers).forEach(([event, handler]) => socket.off(event, handler));
     }
     chatSocketHandlers = null;
+  },
+
+  fetchCallbacks: async () => {
+    try {
+      const res = await axiosInstance.get("/callbacks");
+      set({ callbacks: res.data });
+    } catch (error) {
+      console.error("Failed to load callbacks:", error);
+    }
+  },
+
+  applyCallbackUpdate: (callback) =>
+    set((state) => {
+      const others = state.callbacks.filter((c) => c._id !== callback._id);
+      const upcoming = callback.status === "scheduled" && new Date(callback.end) > new Date();
+      return {
+        callbacks: upcoming
+          ? [...others, callback].sort((a, b) => new Date(a.start) - new Date(b.start))
+          : others,
+      };
+    }),
+
+  getCallbackSlots: async (ownerId) => {
+    try {
+      const res = await axiosInstance.get(`/callbacks/slots/${ownerId}`);
+      return res.data.slots;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't load callback times");
+      return [];
+    }
+  },
+
+  bookCallback: async (ownerId, start, source = "button") => {
+    set({ isBookingCallback: true });
+    try {
+      const res = await axiosInstance.post("/callbacks", { ownerId, start, source });
+      get().applyCallbackUpdate(res.data.callback);
+      if (get().selectedUser?._id === ownerId) {
+        set((state) => ({ messages: appendMessage(state.messages, res.data.message) }));
+      }
+      toast.success("Callback booked");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't book the callback");
+    } finally {
+      set({ isBookingCallback: false });
+    }
+  },
+
+  cancelCallback: async (callbackId) => {
+    try {
+      const res = await axiosInstance.patch(`/callbacks/${callbackId}/cancel`);
+      get().applyCallbackUpdate(res.data.callback);
+      toast.success("Callback cancelled");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't cancel the callback");
+    }
   },
 
   notifyOwner: async (ownerId) => {

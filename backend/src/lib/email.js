@@ -611,7 +611,7 @@ export const sendNewMessageEmail = async (to, receiverName, senderName, messageP
 };
 
 
-const escapeHtml = (value = "") =>
+export const escapeHtml = (value = "") =>
   String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -620,15 +620,14 @@ const escapeHtml = (value = "") =>
     .replace(/'/g, "&#39;");
 
 /**
- * Email the busy owner when someone asks their AI assistant to notify them.
+ * Generic alert email. `intro` may contain trusted markup; `quote` is escaped.
  */
-export const sendOwnerNotificationEmail = async (to, ownerName, requesterName, summary, urgency) => {
+export const sendAlertEmail = async (to, name, { subject, heading, intro, quote, ctaLabel, urgent = false }) => {
   try {
-    const isUrgent = urgency === "urgent";
     const appUrl = process.env.NODE_ENV === "production"
       ? process.env.CLIENT_URL || "https://smartaway-chat-app-zvpr.onrender.com"
       : "http://localhost:5173";
-    const accent = isUrgent ? "#ef4444" : "#8b5cf6";
+    const accent = urgent ? "#ef4444" : "#8b5cf6";
 
     const html = `
 <!DOCTYPE html>
@@ -645,23 +644,23 @@ export const sendOwnerNotificationEmail = async (to, ownerName, requesterName, s
           <tr>
             <td style="background:linear-gradient(135deg,#6366f1 0%,${accent} 100%);padding:30px 40px;text-align:center;">
               <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">
-                ${isUrgent ? "🚨 Urgent request" : "🔔 Your AI assistant needs you"}
+                ${heading}
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:40px 40px 30px;">
               <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 16px;">
-                Hello ${escapeHtml(ownerName)},
+                Hello ${escapeHtml(name)},
               </p>
               <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 24px;">
-                While you were busy, <strong style="color:#ffffff;">${escapeHtml(requesterName)}</strong> asked your AI assistant to let you know they need you${isUrgent ? " <strong style=\"color:#fca5a5;\">urgently</strong>" : ""}:
+                ${intro}
               </p>
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:32px;">
                 <tr>
                   <td style="background-color:#1e2030;border-left:4px solid ${accent};border-radius:4px 12px 12px 4px;padding:20px;">
                     <div style="color:#cbd5e1;font-size:15px;line-height:1.6;font-style:italic;">
-                      "${escapeHtml(summary)}"
+                      "${escapeHtml(quote)}"
                     </div>
                   </td>
                 </tr>
@@ -671,7 +670,7 @@ export const sendOwnerNotificationEmail = async (to, ownerName, requesterName, s
                   <td align="center">
                     <a href="${appUrl}"
                        style="display:inline-block;background:linear-gradient(135deg,#6366f1,${accent});color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:12px;font-size:15px;font-weight:700;">
-                      Reply to ${escapeHtml(requesterName)} &rarr;
+                      ${escapeHtml(ctaLabel)} &rarr;
                     </a>
                   </td>
                 </tr>
@@ -693,12 +692,23 @@ export const sendOwnerNotificationEmail = async (to, ownerName, requesterName, s
 </body>
 </html>`;
 
-    await sendMail({
-      to,
-      subject: `${isUrgent ? "🚨 Urgent: " : "🔔 "}${requesterName} asked your AI assistant to notify you`,
-      html,
-    });
+    await sendMail({ to, subject, html });
   } catch (error) {
-    console.error("Error sending owner notification email:", error.message);
+    console.error("Error sending alert email:", error.message);
   }
+};
+
+/**
+ * Email the busy owner when someone asks their AI assistant to notify them.
+ */
+export const sendOwnerNotificationEmail = (to, ownerName, requesterName, summary, urgency) => {
+  const isUrgent = urgency === "urgent";
+  return sendAlertEmail(to, ownerName, {
+    subject: `${isUrgent ? "🚨 Urgent: " : "🔔 "}${requesterName} asked your AI assistant to notify you`,
+    heading: isUrgent ? "🚨 Urgent request" : "🔔 Your AI assistant needs you",
+    intro: `While you were busy, <strong style="color:#ffffff;">${escapeHtml(requesterName)}</strong> asked your AI assistant to let you know they need you${isUrgent ? " <strong style=\"color:#fca5a5;\">urgently</strong>" : ""}:`,
+    quote: summary,
+    ctaLabel: `Reply to ${requesterName}`,
+    urgent: isUrgent,
+  });
 };

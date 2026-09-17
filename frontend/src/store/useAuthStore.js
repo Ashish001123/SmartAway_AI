@@ -275,13 +275,22 @@ export const useAuthStore = create((set, get) => ({
       if (connected) toast.success("Telegram connected");
     });
 
+    useChatStore.getState().fetchCallbacks();
+    socket.on("callbackUpdated", (callback) => useChatStore.getState().applyCallbackUpdate(callback));
+
     // Someone asked your busy AI assistant to notify you
     useNotificationStore.getState().fetchNotifications();
     socket.on("ownerNotification", (notification) => {
       useNotificationStore.getState().addNotification(notification);
 
       const from = notification.fromUserId?.fullName || "Someone";
-      const title = `${notification.urgency === "urgent" ? "🚨 Urgent: " : "🔔 "}${from} needs you`;
+      const titles = {
+        callback_booked: `📅 ${from} booked a callback`,
+        callback_cancelled: `🗓️ ${from} cancelled a callback`,
+        callback_reminder: `📞 Callback with ${from} soon`,
+      };
+      const title =
+        titles[notification.type] || `${notification.urgency === "urgent" ? "🚨 Urgent: " : "🔔 "}${from} needs you`;
       toast(`${title}: ${notification.summary}`, { id: notification._id, duration: 8000 });
 
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
@@ -304,6 +313,7 @@ export const useAuthStore = create((set, get) => ({
       get().socket.off("newMessage");
       get().socket.off("ownerNotification");
       get().socket.off("telegramStatus");
+      get().socket.off("callbackUpdated");
       get().socket.disconnect();
     }
   },

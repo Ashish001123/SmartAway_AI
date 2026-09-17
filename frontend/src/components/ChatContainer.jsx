@@ -1,11 +1,13 @@
 import { useChatStore } from "../store/useChatStore";
 import { useAIStore } from "../store/ai.store";
 import { useEffect, useRef } from "react";
-import { Trash2, Smile, Check, CheckCheck, BellRing } from "lucide-react";
+import { Trash2, Smile, Check, CheckCheck } from "lucide-react";
 
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
+import BusyAgentActions from "./BusyAgentActions";
+import CallbackBanner from "./CallbackBanner";
 
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
@@ -21,8 +23,6 @@ const ChatContainer = () => {
     deleteMessage,
     reactToMessage,
     agentTyping,
-    notifyOwner,
-    notifyingOwnerId,
   } = useChatStore();
 
   const { messages: aiMessages, loading: isAILoading, loadHistory } = useAIStore();
@@ -78,18 +78,15 @@ const ChatContainer = () => {
 
   const contactFirstName = selectedUser.fullName?.split(" ")[0] || "them";
   const lastMessage = chatMessages[chatMessages.length - 1];
-  // Offer the notify option after the busy user's latest auto-reply, unless it already notified them
-  const canNotifyOwner =
-    !isAI &&
-    !typingAgent &&
-    lastMessage?.isAutoReply &&
-    !lastMessage.ownerNotified &&
-    lastMessage.senderId === selectedUser._id;
+  // Offer notify / callback options under the busy user's latest auto-reply
+  const showAgentActions =
+    !isAI && !typingAgent && lastMessage?.isAutoReply && lastMessage.senderId === selectedUser._id;
   const isMyAgentTyping = typingAgent?.ownerId === authUser._id;
 
   return (
     <div className="flex-1 flex flex-col overflow-auto">
       <ChatHeader />
+      {!isAI && <CallbackBanner />}
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {chatMessages.map((message) => {
@@ -231,23 +228,7 @@ const ChatContainer = () => {
           );
         })}
 
-        {canNotifyOwner && (
-          <div className="flex justify-start pl-12">
-            <button
-              onClick={() => notifyOwner(selectedUser._id)}
-              disabled={notifyingOwnerId === selectedUser._id}
-              className="btn btn-xs btn-outline btn-primary gap-1"
-              title={`Ask the AI assistant to notify ${selectedUser.fullName}`}
-            >
-              {notifyingOwnerId === selectedUser._id ? (
-                <span className="loading loading-spinner loading-xs" />
-              ) : (
-                <BellRing size={12} />
-              )}
-              Notify {contactFirstName}
-            </button>
-          </div>
-        )}
+        {showAgentActions && <BusyAgentActions key={lastMessage._id} lastMessage={lastMessage} />}
 
         {(isAI ? isAILoading : typingAgent) && (
           <div className={`chat ${isMyAgentTyping ? "chat-end" : "chat-start"}`}>

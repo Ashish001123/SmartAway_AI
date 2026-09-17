@@ -1,12 +1,14 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import Notification from "../models/notification.model.js";
-import { getReceiverSocketId, io } from "./socket.js";
 import { callAIService } from "./ai.js";
 import { decryptText } from "./e2ee.js";
 import { sendOwnerNotificationEmail } from "./email.js";
 import { getContactFacts, rememberFact } from "./contactMemory.js";
 import { deliverAlert } from "./alerts.js";
+import { describeTimeLeft, getBusyState, getFreeSlots } from "./availability.js";
+import { ensureCalendarFresh } from "./calendar.js";
+import { emitTo } from "./realtime.js";
 
 const HISTORY_LIMIT = 20;
 // The agent re-introduces itself if it hasn't replied in this conversation for this long
@@ -14,29 +16,6 @@ const SESSION_GAP_MS = 6 * 60 * 60 * 1000;
 const STATIC_REPLY_COOLDOWN_MS = 5 * 60 * 1000;
 const NOTIFY_COOLDOWN_MS = 10 * 60 * 1000;
 const SUMMARY_MAX_LENGTH = 280;
-
-export const isUserBusy = (user, now = new Date()) => {
-  if (!user?.isBusy) return false;
-  if (user.busyStart && now < new Date(user.busyStart)) return false;
-  if (user.busyEnd && now > new Date(user.busyEnd)) return false;
-  return true;
-};
-
-const describeTimeLeft = (busyEnd) => {
-  if (!busyEnd) return null;
-  const minutes = Math.round((new Date(busyEnd) - Date.now()) / 60000);
-  if (minutes <= 1) return "any moment now";
-  if (minutes < 60) return `in about ${minutes} minutes`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    const rest = minutes % 60;
-    const hoursText = `${hours} hour${hours === 1 ? "" : "s"}`;
-    return rest >= 10 ? `in about ${hoursText} ${rest} minutes` : `in about ${hoursText}`;
-  }
-  const days = Math.round(hours / 24);
-  return `in about ${days} day${days === 1 ? "" : "s"}`;
-};
 
 const firstName = (user) => user.fullName.split(" ")[0];
 
@@ -48,11 +27,6 @@ const messageText = (message) => {
 };
 
 const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
-
-const emitTo = (userId, event, payload) => {
-  const socketId = getReceiverSocketId(userId);
-  if (socketId) io.to(socketId).emit(event, payload);
-};
 
 const getConversation = async (ownerId, senderId) => {
   const recent = await Message.find({
@@ -82,7 +56,7 @@ const splitConversation = (history, ownerId, answeredUpTo) => {
   };
 };
 
-const postAutoReply = async ({ owner, senderId, text, ownerNotified = false }) => {
+export const postAutoReply = async ({ owner, senderId, text, ownerNotified = false, callbackSlots, callbackId }) => {
   const ownerId = owner._id.toString();
   const message = await Message.create({
     senderId: ownerId,
@@ -90,6 +64,8 @@ const postAutoReply = async ({ owner, senderId, text, ownerNotified = false }) =
     text,
     isAutoReply: true,
     ownerNotified,
+    callbackSlots,
+    callbackId,
     isRead: false,
   });
   emitTo(senderId, "newMessage", message);
@@ -106,6 +82,7 @@ const findRecentNotification = (owner, requester) =>
   Notification.findOne({
     userId: owner._id,
     fromUserId: requester._id,
+    type: { $in: ["notify_request", null] },
     createdAt: { $gte: new Date(Date.now() - NOTIFY_COOLDOWN_MS) },
   }).sort({ createdAt: -1 });
 
@@ -119,6 +96,7 @@ export const notifyOwner = async ({ owner, requester, summary, urgency = "normal
   const notification = await Notification.create({
     userId: owner._id,
     fromUserId: requester._id,
+    type: "notify_request",
     summary: truncate(summary, SUMMARY_MAX_LENGTH),
     urgency,
   });
@@ -171,24 +149,29 @@ const tryNotifyOwner = async (details) => {
 // Returns the createdAt of the newest message handled, so a follow-up pass knows what's been answered
 const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
   const [owner, sender] = await Promise.all([User.findById(ownerId), User.findById(senderId)]);
-  if (!owner || !sender || !isUserBusy(owner)) return answeredUpTo;
+  if (!owner || !sender) return answeredUpTo;
+  await ensureCalendarFresh(owner);
+  const busyState = getBusyState(owner);
+  if (!busyState.busy) return answeredUpTo;
 
   const history = await getConversation(ownerId, senderId);
   const { lastOwnerMessage, earlier, unanswered } = splitConversation(history, ownerId, answeredUpTo);
   if (unanswered.length === 0) return answeredUpTo;
   const handledUpTo = unanswered[unanswered.length - 1].createdAt;
 
-  const sessionStart = Math.max(
-    owner.busyStart ? new Date(owner.busyStart).getTime() : 0,
-    Date.now() - SESSION_GAP_MS
-  );
+  const sessionStart = Math.max(busyState.since ? busyState.since.getTime() : 0, Date.now() - SESSION_GAP_MS);
   const agentAlreadyReplied =
     lastOwnerMessage?.isAutoReply && new Date(lastOwnerMessage.createdAt).getTime() >= sessionStart;
 
   const rule = contactRule(owner, senderId);
   const unansweredTexts = unanswered.map(messageText).filter(Boolean);
   const latestText = unansweredTexts[unansweredTexts.length - 1] || "";
-  const timeLeft = describeTimeLeft(owner.busyEnd);
+  const timeLeft = describeTimeLeft(busyState.until);
+  const calendarNote = busyState.calendarBlock
+    ? owner.googleCalendar.shareEventTitles
+      ? `In "${busyState.calendarBlock.titles.join('", "')}" (from their calendar)`
+      : "In a scheduled event on their calendar"
+    : null;
 
   // Urgent keywords and contact rules alert the owner without waiting for the agent to decide
   const keyword = findUrgentKeyword(owner, unansweredTexts);
@@ -224,13 +207,16 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
 
   let replyText;
   let agentOutput = null;
+  let freeSlots = [];
 
   setAgentTyping(ownerId, senderId, true);
   try {
-    const [recentNotification, contactMemory] = await Promise.all([
+    const [recentNotification, contactMemory, slots] = await Promise.all([
       findRecentNotification(owner, sender),
       getContactFacts(owner._id, sender._id),
+      getFreeSlots(owner),
     ]);
+    freeSlots = slots;
     const data = await callAIService("/busy-reply", {
       senderName: sender.fullName,
       receiverName: owner.fullName,
@@ -242,6 +228,8 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
       autoNotifiedReason: autoNotified ? autoNotify.reason : null,
       agentPersona: owner.agentPersona || "friendly",
       contactMemory,
+      calendarNote,
+      availableSlots: freeSlots.map((slot) => slot.label),
       chatHistory: earlier
         .map((m) => ({
           role: m.senderId.toString() === senderId ? "sender" : m.isAutoReply ? "assistant" : "owner",
@@ -276,7 +264,12 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
     );
   }
 
-  await postAutoReply({ owner, senderId, text: replyText, ownerNotified });
+  const offeredSlots =
+    agentOutput?.offerSlots && freeSlots.length
+      ? freeSlots.map(({ start, end }) => ({ start, end }))
+      : undefined;
+
+  await postAutoReply({ owner, senderId, text: replyText, ownerNotified, callbackSlots: offeredSlots });
   return handledUpTo;
 };
 

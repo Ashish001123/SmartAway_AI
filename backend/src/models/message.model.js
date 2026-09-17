@@ -19,6 +19,12 @@ const messageSchema = new mongoose.Schema(
     isRead: { type: Boolean, default: false },
     isAutoReply: { type: Boolean, default: false },
     ownerNotified: { type: Boolean, default: false }, // auto-reply that notified the busy owner
+    // Free times the busy agent offered for a callback
+    callbackSlots: {
+      type: [{ _id: false, start: Date, end: Date }],
+      default: undefined,
+    },
+    callbackId: { type: mongoose.Schema.Types.ObjectId, ref: "Callback" }, // message about a booked callback
 
     deletedFor: {
       type: [mongoose.Schema.Types.ObjectId], 

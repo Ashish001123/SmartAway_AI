@@ -5,6 +5,12 @@ import { useChatStore } from "../store/useChatStore";
 import { formatMessageTime } from "../lib/utils";
 import { axiosInstance } from "../lib/axios";
 
+const TYPE_LABELS = {
+  callback_booked: "📅 callback booked",
+  callback_cancelled: "🗓️ callback cancelled",
+  callback_reminder: "📞 callback soon",
+};
+
 const NotificationBell = () => {
   const { notifications, markAllRead } = useNotificationStore();
   const { setSelectedUser, clearUnread } = useChatStore();
@@ -44,7 +50,7 @@ const NotificationBell = () => {
       >
         <div className="px-4 py-3 border-b border-base-300">
           <h3 className="font-semibold text-sm">Notifications</h3>
-          <p className="text-xs text-base-content/60">People who asked your AI assistant to reach you</p>
+          <p className="text-xs text-base-content/60">Requests and callbacks from your AI assistant</p>
         </div>
 
         <ul className="max-h-96 overflow-y-auto">
@@ -75,6 +81,9 @@ const NotificationBell = () => {
                   </div>
                   {n.urgency === "urgent" && (
                     <span className="badge badge-error badge-xs mt-0.5">urgent</span>
+                  )}
+                  {TYPE_LABELS[n.type] && (
+                    <span className="badge badge-ghost badge-xs mt-0.5">{TYPE_LABELS[n.type]}</span>
                   )}
                   <p className="text-xs text-base-content/70 mt-0.5 line-clamp-2">{n.summary}</p>
                 </div>

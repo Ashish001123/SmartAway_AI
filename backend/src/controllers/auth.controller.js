@@ -8,6 +8,7 @@ import { OAuth2Client } from "google-auth-library";
 import { sendWelcomeEmail, sendOTPEmail, sendVerificationEmail } from "../lib/email.js";
 import { warmUpAIService } from "../lib/ai.js";
 import { isValidTimeZone } from "../lib/availability.js";
+import { calendarSummary } from "../lib/calendar.js";
 
 const BUSY_MESSAGE_MAX_LENGTH = 1000;
 const AGENT_PERSONAS = ["friendly", "professional", "funny"];
@@ -37,6 +38,7 @@ const userResponse = (user) => ({
   urgentKeywords: user.urgentKeywords,
   notifyChannels: user.notifyChannels,
   telegramConnected: Boolean(user.telegramChatId),
+  calendar: calendarSummary(user),
 });
 
 // ─── SIGNUP (email/password) ─────────────────────────────────────────────────

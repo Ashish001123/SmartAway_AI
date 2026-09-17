@@ -5,6 +5,7 @@ import { THEMES } from "../constants";
 import { Send, Bot, Clock, MessageSquare, AlertTriangle } from "lucide-react";
 import AgentRulesCard from "../components/AgentRulesCard";
 import AlertsCard from "../components/AlertsCard";
+import CalendarCard from "../components/CalendarCard";
 import { browserTimeZone } from "../lib/utils";
 
 const PERSONAS = [
@@ -300,6 +301,8 @@ const SettingsPage = () => {
             </div>
           </div>
         )}
+
+        {authUser && <CalendarCard />}
 
         {authUser && <AgentRulesCard />}
 

@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { useAuthStore } from "../store/useAuthStore";
 import { axiosInstance } from "../lib/axios";
 import { disablePush, enablePush, getPushSubscription, isPushSupported } from "../lib/push";
+import { fetchIntegrations } from "../lib/integrations";
 
 const ChannelToggle = ({ checked, onChange, disabled }) => (
   <input
@@ -24,10 +25,7 @@ const AlertsCard = () => {
   const channels = authUser?.notifyChannels || {};
 
   useEffect(() => {
-    axiosInstance
-      .get("/integrations")
-      .then((res) => setIntegrations(res.data))
-      .catch(() => setIntegrations({ telegram: false, push: false }));
+    fetchIntegrations().then(setIntegrations);
     getPushSubscription()
       .then((subscription) => setPushEnabledHere(Boolean(subscription)))
       .catch(() => setPushEnabledHere(false));

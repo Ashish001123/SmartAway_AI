@@ -6,7 +6,9 @@ import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import { sendNewMessageEmail } from "../lib/email.js";
 import { decryptText } from "../lib/e2ee.js";
-import { isUserBusy, handleMessageToBusyUser, requestNotificationFromSender } from "../lib/busyAgent.js";
+import { handleMessageToBusyUser, requestNotificationFromSender } from "../lib/busyAgent.js";
+import { isUserBusy } from "../lib/availability.js";
+import { ensureCalendarFresh, isCalendarConnected, nextCalendarBlock } from "../lib/calendar.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -14,7 +16,7 @@ export const getUsersForSidebar = async (req, res) => {
 
     const users = await User.find({
       _id: { $ne: loggedInUserId },
-    }).select(PUBLIC_USER_FIELDS);
+    }).select(`${PUBLIC_USER_FIELDS} googleCalendar.refreshToken googleCalendar.autoBusy googleCalendar.events`);
     const unreadCounts = await Message.aggregate([
   {
     $match: {
@@ -34,10 +36,17 @@ export const getUsersForSidebar = async (req, res) => {
       unreadMap[u._id.toString()] = u.count;
     });
 
-    const usersWithUnread = users.map((user) => ({
-      ...user.toObject(),
-      unreadCount: unreadMap[user._id.toString()] || 0,
-    }));
+    const usersWithUnread = users.map((user) => {
+      // Share only when a calendar makes the contact busy, never event titles or tokens
+      const { googleCalendar, ...publicFields } = user.toObject();
+      const block = nextCalendarBlock(user);
+      return {
+        ...publicFields,
+        calendarBusyFrom: block?.start || null,
+        calendarBusyUntil: block?.end || null,
+        unreadCount: unreadMap[user._id.toString()] || 0,
+      };
+    });
 
     res.status(200).json(usersWithUnread);
   } catch (error) {
@@ -154,7 +163,9 @@ export const sendMessage = async (req, res) => {
 
     try {
       const receiver = await User.findById(receiverId);
-      if (receiver && isUserBusy(receiver)) {
+      // Calendar-driven busy is re-checked after a fresh sync inside the agent
+      const calendarMayBeBusy = isCalendarConnected(receiver) && receiver.googleCalendar.autoBusy;
+      if (receiver && (isUserBusy(receiver) || calendarMayBeBusy)) {
         handleMessageToBusyUser(receiverId, senderId);
       }
     } catch (err) {
@@ -181,6 +192,7 @@ export const requestOwnerNotification = async (req, res) => {
     if (!owner) {
       return res.status(404).json({ message: "User not found" });
     }
+    await ensureCalendarFresh(owner);
     if (!isUserBusy(owner)) {
       return res.status(409).json({ message: `${owner.fullName} is available now, just send them a message.` });
     }

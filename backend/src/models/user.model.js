@@ -81,6 +81,22 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    googleCalendar: {
+      refreshToken: { type: String, default: null }, // encrypted at rest
+      email: { type: String, default: null },
+      autoBusy: { type: Boolean, default: true },
+      shareEventTitles: { type: Boolean, default: false },
+      lastSyncedAt: { type: Date, default: null },
+      // Upcoming busy events (next 7 days) cached from the last sync
+      events: [
+        {
+          _id: false,
+          start: { type: Date, required: true },
+          end: { type: Date, required: true },
+          title: { type: String, default: "Busy" },
+        },
+      ],
+    },
     publicKey: {
       type: String,
       default: null,

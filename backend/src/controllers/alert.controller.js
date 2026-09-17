@@ -1,4 +1,5 @@
 import { deliverAlert } from "../lib/alerts.js";
+import { isCalendarConfigured } from "../lib/calendar.js";
 import { getVapidPublicKey, isPushConfigured, removeSubscription, saveSubscription } from "../lib/push.js";
 import {
   createTelegramLink,
@@ -14,6 +15,7 @@ export const getIntegrations = (req, res) => {
     telegram: isTelegramConfigured(),
     push: isPushConfigured(),
     pushPublicKey: getVapidPublicKey(),
+    calendar: isCalendarConfigured(),
   });
 };
 

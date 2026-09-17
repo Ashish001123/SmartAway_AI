@@ -14,6 +14,15 @@ const notificationSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    type: {
+      type: String,
+      enum: ["notify_request", "callback_booked", "callback_cancelled", "callback_reminder"],
+      default: "notify_request",
+    },
+    callbackId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Callback",
+    },
     summary: {
       type: String,
       default: "",

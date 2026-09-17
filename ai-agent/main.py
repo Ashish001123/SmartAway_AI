@@ -71,6 +71,8 @@ class BusyQuery(BaseModel):
     autoNotifiedReason: Optional[str] = None
     agentPersona: str = "friendly"
     contactMemory: list = []
+    calendarNote: Optional[str] = None
+    availableSlots: list = []
 
 
 @app.post("/busy-reply")
@@ -87,7 +89,9 @@ def busy_reply(query: BusyQuery):
             owner_recently_notified=query.ownerRecentlyNotified,
             auto_notified_reason=query.autoNotifiedReason,
             agent_persona=query.agentPersona,
-            contact_memory=query.contactMemory
+            contact_memory=query.contactMemory,
+            calendar_note=query.calendarNote,
+            available_slots=query.availableSlots
         )
     except Exception as e:
         _fail(e)
@@ -96,5 +100,6 @@ def busy_reply(query: BusyQuery):
         "notifyOwner": response["notify_owner"],
         "urgency": response["urgency"],
         "summary": response["summary"],
-        "remember": response["remember"]
+        "remember": response["remember"],
+        "offerSlots": response["offer_slots"]
     }

@@ -13,6 +13,8 @@ import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import notificationRoutes from "./routes/notification.route.js";
 import alertRoutes from "./routes/alert.route.js";
+import calendarRoutes from "./routes/calendar.route.js";
+import { startSchedulers } from "./lib/callbacks.js";
 import { startTelegramBot } from "./lib/telegram.js";
 import { app, server } from "./lib/socket.js";
 dotenv.config();
@@ -43,6 +45,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/ai", aiRoute);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api", alertRoutes);
+app.use("/api", calendarRoutes);
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../../frontend/dist")));
@@ -56,4 +59,5 @@ server.listen(PORT, () => {
   console.log("server is running on PORT:" + PORT);
   connectDB();
   startTelegramBot();
+  startSchedulers();
 });
