@@ -18,10 +18,11 @@ def get_client() -> OpenAI:
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set on the AI service")
         # OPENAI_BASE_URL lets you point at any OpenAI-compatible provider (e.g. Groq, OpenRouter)
+        # Two 30s attempts at most, so a hung provider fails here before the backend's 90s timeout
         _client = OpenAI(
             api_key=api_key,
             base_url=os.getenv("OPENAI_BASE_URL") or None,
-            timeout=45,
+            timeout=30,
             max_retries=1,
         )
     return _client
