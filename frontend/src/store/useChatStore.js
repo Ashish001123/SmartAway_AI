@@ -2,7 +2,9 @@ import { create } from "zustand";
 import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
-import { getConversationKey, encryptText, decryptText } from "../lib/crypto.js";
+import { getConversationKey, getSharedKey, encryptText, decryptText } from "../lib/crypto.js";
+import { isUserBusy } from "../lib/utils.js";
+import { useE2EEStore } from "./useE2EEStore.js";
 
 // ─── E2EE helpers ────────────────────────────────────────────────────────────
 
@@ -22,6 +24,27 @@ async function decryptMessageObj(message) {
   const ciphertext = message.encryptedText;
   if (!ciphertext) return message; // legacy / auto-reply — keep as-is
 
+  if (message.encVersion === 2) {
+    const { privateKey, publicKey } = useE2EEStore.getState();
+    if (!privateKey) {
+      return { ...message, text: "🔒 Enter your chat PIN to read this message", isLocked: true };
+    }
+    const sentByMe = senderId === authUser._id;
+    const myKeyUsed = sentByMe ? message.encKeys?.sender : message.encKeys?.receiver;
+    const theirKey = sentByMe ? message.encKeys?.receiver : message.encKeys?.sender;
+    if (myKeyUsed !== publicKey || !theirKey) {
+      return { ...message, text: "🔒 Encrypted with keys from before a reset", isLocked: true };
+    }
+    try {
+      const key = await getSharedKey(privateKey, theirKey, senderId, receiverId);
+      const plaintext = await decryptText(ciphertext, key);
+      return { ...message, text: plaintext ?? "[Decryption failed]" };
+    } catch (err) {
+      console.error("Failed to decrypt message:", err);
+      return { ...message, text: "[Decryption failed]" };
+    }
+  }
+
   try {
     const key = await getConversationKey(senderId, receiverId);
     const plaintext = await decryptText(ciphertext, key);
@@ -30,6 +53,32 @@ async function decryptMessageObj(message) {
     console.error("Failed to decrypt message:", err);
     return { ...message, text: "[Decryption failed]" };
   }
+}
+
+// Encrypts outgoing text: v2 when both people have keys, otherwise the legacy conversation key.
+// When the receiver is busy, a readable copy is shared with their AI assistant (the chat says so).
+async function buildEncryptedPayload(messageData, targetUser) {
+  const authUser = useAuthStore.getState().authUser;
+  if (!messageData.text || !authUser || !targetUser) return { ...messageData };
+
+  const { privateKey, publicKey } = useE2EEStore.getState();
+  let payload;
+  if (privateKey && publicKey && targetUser.publicKey) {
+    const key = await getSharedKey(privateKey, targetUser.publicKey, authUser._id, targetUser._id);
+    payload = {
+      ...messageData,
+      text: "",
+      encryptedText: await encryptText(messageData.text, key),
+      encVersion: 2,
+      encKeys: { sender: publicKey, receiver: targetUser.publicKey },
+    };
+  } else {
+    const key = await getConversationKey(authUser._id, targetUser._id);
+    payload = { ...messageData, text: "", encryptedText: await encryptText(messageData.text, key) };
+  }
+
+  if (isUserBusy(targetUser)) payload.agentText = messageData.text;
+  return payload;
 }
 
 const appendMessage = (messages, message) =>
@@ -86,33 +135,10 @@ export const useChatStore = create((set, get) => ({
   sendMessage: (messageData) => get().sendMessageTo(get().selectedUser, messageData),
 
   // Sends to any contact (e.g. a one-tap reply from the away summary); returns true on success
-  sendMessageTo: async (targetUser, messageData) => {
+  sendMessageTo: async (targetUser, messageData, isRetry = false) => {
     try {
-      let payload = { ...messageData };
-
-      // E2EE: encrypt text using derived conversation key
-      if (messageData.text) {
-        try {
-          const authUser = useAuthStore.getState().authUser;
-          if (authUser && targetUser) {
-            const key = await getConversationKey(authUser._id, targetUser._id);
-            const encryptedText = await encryptText(messageData.text, key);
-
-            payload = {
-              ...payload,
-              encryptedText,
-              text: "", // server stores empty string; plaintext never leaves this device
-            };
-          }
-        } catch (e) {
-          console.warn("E2EE encryption error:", e);
-        }
-      }
-
-      const res = await axiosInstance.post(
-        `/messages/send/${targetUser._id}`,
-        payload
-      );
+      const payload = await buildEncryptedPayload(messageData, targetUser);
+      const res = await axiosInstance.post(`/messages/send/${targetUser._id}`, payload);
 
       // Decrypt the response so our own sent message renders correctly
       const decrypted = await decryptMessageObj(res.data);
@@ -124,10 +150,23 @@ export const useChatStore = create((set, get) => ({
       get().receiveMessage(res.data);
       return true;
     } catch (error) {
+      // The contact reset their keys since we loaded them: pick up the new key and try once more
+      if (!isRetry && error.response?.data?.code === "STALE_PUBLIC_KEY") {
+        get().updateUserPublicKey(targetUser._id, error.response.data.receiverPublicKey);
+        const refreshed = { ...targetUser, publicKey: error.response.data.receiverPublicKey };
+        return get().sendMessageTo(refreshed, messageData, true);
+      }
       toast.error(error.response?.data?.message || "Failed to send message");
       return false;
     }
   },
+
+  updateUserPublicKey: (userId, publicKey) =>
+    set((state) => ({
+      users: state.users.map((u) => (u._id === userId ? { ...u, publicKey } : u)),
+      selectedUser:
+        state.selectedUser?._id === userId ? { ...state.selectedUser, publicKey } : state.selectedUser,
+    })),
 
   subscribeToMessages: () => {
     const socket = useAuthStore.getState().socket;
@@ -315,7 +354,9 @@ export const useChatStore = create((set, get) => ({
     ),
   })),
 
-  setSelectedUser: (selectedUser) => set({ selectedUser }),
+  // Links from notifications carry only a name and picture; use the full contact when we have it
+  setSelectedUser: (selectedUser) =>
+    set({ selectedUser: selectedUser && (get().users.find((u) => u._id === selectedUser._id) || selectedUser) }),
 
   deleteMessage: async (messageId) => {
     try {

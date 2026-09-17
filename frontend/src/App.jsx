@@ -6,6 +6,7 @@ import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AgentPage from "./pages/AgentPage";
 import AwayDigestModal from "./components/AwayDigestModal";
+import E2EEModal from "./components/E2EEModal";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
 import { useThemeStore } from "./store/useThemeStore";
@@ -47,6 +48,7 @@ const App = () => {
       </Routes>
 
       {authUser && <AwayDigestModal />}
+      {authUser && <E2EEModal />}
       <Toaster />
     </div>
   );

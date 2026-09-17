@@ -6,6 +6,7 @@ import { Send, Bot, Clock, MessageSquare, AlertTriangle } from "lucide-react";
 import AgentRulesCard from "../components/AgentRulesCard";
 import AlertsCard from "../components/AlertsCard";
 import CalendarCard from "../components/CalendarCard";
+import EncryptionCard from "../components/EncryptionCard";
 import { browserTimeZone } from "../lib/utils";
 
 const PERSONAS = [
@@ -307,6 +308,8 @@ const SettingsPage = () => {
         {authUser && <AgentRulesCard />}
 
         {authUser && <AlertsCard />}
+
+        {authUser && <EncryptionCard />}
 
         <div>
           <h3 className="text-lg font-semibold mb-3">Preview</h3>

@@ -16,6 +16,15 @@ const messageSchema = new mongoose.Schema(
     encryptedText: String,          // ciphertext encrypted with receiver's public key
     encryptedTextForSender: String, // ciphertext encrypted with sender's public key (so sender can re-read)
     image: String,
+    // 2 = encrypted with the two users' ECDH keys; missing = legacy encryption or plaintext
+    encVersion: Number,
+    // The public keys used, so either side can still decrypt after the other resets keys
+    encKeys: {
+      sender: String,
+      receiver: String,
+    },
+    // Plaintext copy shared with the receiver's AI assistant because they were busy
+    agentText: String,
     isRead: { type: Boolean, default: false },
     isAutoReply: { type: Boolean, default: false },
     ownerNotified: { type: Boolean, default: false }, // auto-reply that notified the busy owner

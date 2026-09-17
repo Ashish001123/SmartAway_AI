@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { useAIStore } from "../store/ai.store";
+import { isUserBusy } from "../lib/utils";
 
 import { Image, Send, X, Smile } from "lucide-react";
 import toast from "react-hot-toast";
@@ -14,7 +15,8 @@ const MessageInput = ({ isAI }) => {
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
 
-  const { sendMessage } = useChatStore();
+  const { sendMessage, selectedUser } = useChatStore();
+  const sharesWithAgent = !isAI && isUserBusy(selectedUser);
   const { sendMessage: sendAIMessage } = useAIStore();
 
   const handleImageChange = (e) => {
@@ -65,6 +67,12 @@ const MessageInput = ({ isAI }) => {
 
   return (
     <div className="p-4 w-full relative">
+      {sharesWithAgent && (
+        <div className="mb-2 text-xs text-base-content/70 flex items-center gap-1.5" role="note">
+          🤖 {selectedUser.fullName?.split(" ")[0]} is busy, so their AI assistant can read messages you send until
+          they&apos;re back.
+        </div>
+      )}
       {imagePreview && !isAI && (
         <div className="mb-3 flex items-center gap-2">
           <div className="relative">

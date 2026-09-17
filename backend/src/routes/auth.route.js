@@ -6,7 +6,8 @@ import {
   signup,
   updateProfile,
   updateBusySettings,
-  updatePublicKey,
+  updateE2EEKeys,
+  getE2EEKeys,
   getUserPublicKey,
   googleAuth,
   forgotPassword,
@@ -39,7 +40,8 @@ router.put("/busy-settings", protectRoute, updateBusySettings);
 router.get("/check", protectRoute, checkAuth);
 
 // E2EE key management
-router.put("/public-key", protectRoute, updatePublicKey);
+router.get("/e2ee-keys", protectRoute, getE2EEKeys);
+router.put("/e2ee-keys", protectRoute, updateE2EEKeys);
 router.get("/public-key/:id", protectRoute, getUserPublicKey);
 
 export default router;

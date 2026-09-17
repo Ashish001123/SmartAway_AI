@@ -3,7 +3,7 @@ import Notification from "../models/notification.model.js";
 import Callback from "../models/callback.model.js";
 import Digest from "../models/digest.model.js";
 import User from "../models/user.model.js";
-import { agentVisibleText } from "./agentText.js";
+import { agentVisibleText, PRIVATE_MESSAGE_PLACEHOLDER } from "./agentText.js";
 import { callAIService } from "./ai.js";
 import { formatSlotLabel, isUserBusy } from "./availability.js";
 import { ensureCalendarFresh } from "./calendar.js";
@@ -65,14 +65,20 @@ const buildConversation = async (owner, contact, firstAutoReplyAt, since) => {
   return {
     transcript,
     agentReplies: messages.filter((m) => m.isAutoReply).length,
-    lastContactText: transcript.findLast((m) => m.role === "contact")?.text || "",
+    lastContactText:
+      transcript.findLast((m) => m.role === "contact" && m.text !== PRIVATE_MESSAGE_PLACEHOLDER)?.text || "",
     notified: notification?.urgency || null,
     callbackStart: callback?.start || null,
     ownerReplied,
   };
 };
 
-const publicContact = (user) => ({ _id: user._id, fullName: user.fullName, profilePic: user.profilePic });
+const publicContact = (user) => ({
+  _id: user._id,
+  fullName: user.fullName,
+  profilePic: user.profilePic,
+  publicKey: user.publicKey, // lets one-tap replies be end-to-end encrypted
+});
 
 const present = (digest, contactsById) => ({
   available: true,
@@ -110,7 +116,7 @@ export const getAwayDigest = async (owner) => {
     .slice(0, MAX_CONTACTS);
   const activityUpTo = autoReplies[autoReplies.length - 1].createdAt;
 
-  const contacts = await User.find({ _id: { $in: contactIds } }).select("fullName profilePic");
+  const contacts = await User.find({ _id: { $in: contactIds } }).select("fullName profilePic publicKey");
   const contactsById = new Map(contacts.map((c) => [c._id.toString(), c]));
 
   const seenAt = owner.lastDigestSeenAt || null;

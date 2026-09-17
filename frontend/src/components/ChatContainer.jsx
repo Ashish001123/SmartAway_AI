@@ -10,6 +10,7 @@ import BusyAgentActions from "./BusyAgentActions";
 import CallbackBanner from "./CallbackBanner";
 
 import { useAuthStore } from "../store/useAuthStore";
+import { useE2EEStore } from "../store/useE2EEStore";
 import { formatMessageTime } from "../lib/utils";
 
 const ChatContainer = () => {
@@ -30,6 +31,8 @@ const ChatContainer = () => {
   const messageEndRef = useRef(null);
 
   const isAI = selectedUser?._id === "ai_assistant";
+  // Reload (and decrypt) messages once this device's encryption keys are unlocked
+  const e2eeReady = useE2EEStore((state) => state.status === "ready");
 
   useEffect(() => {
     if (!selectedUser?._id || isAI) return;
@@ -41,6 +44,7 @@ const ChatContainer = () => {
   }, [
     selectedUser?._id,
     isAI,
+    e2eeReady,
     getMessages,
     subscribeToMessages,
     unsubscribeFromMessages,

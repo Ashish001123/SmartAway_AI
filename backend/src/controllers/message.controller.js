@@ -86,9 +86,11 @@ export const getMessages = async (req, res) => {
   }
 };
 
+const MAX_AGENT_TEXT_LENGTH = 5000;
+
 export const sendMessage = async (req, res) => {
   try {
-    const { text, image, encryptedText, encryptedTextForSender } = req.body;
+    const { text, image, encryptedText, encryptedTextForSender, encVersion, encKeys, agentText } = req.body;
     const senderId = req.user._id.toString();
     const receiverId = req.params.id.toString();
 
@@ -104,6 +106,38 @@ export const sendMessage = async (req, res) => {
       return res.status(201).json(aiMessage);
     }
 
+    if (!mongoose.isValidObjectId(receiverId)) {
+      return res.status(400).json({ message: "Invalid receiver" });
+    }
+    const receiver = await User.findById(receiverId);
+    if (!receiver) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isV2 = encVersion === 2;
+    if (isV2) {
+      if (!encryptedText || typeof encKeys?.sender !== "string" || typeof encKeys?.receiver !== "string") {
+        return res.status(400).json({ message: "Invalid encrypted message" });
+      }
+      // Encrypting to an outdated key would make the message unreadable for the receiver
+      if (encKeys.sender !== req.user.publicKey || encKeys.receiver !== receiver.publicKey) {
+        return res.status(409).json({
+          code: "STALE_PUBLIC_KEY",
+          message: "Encryption keys changed. Please try again.",
+          receiverPublicKey: receiver.publicKey,
+        });
+      }
+    }
+
+    // Calendar-driven busy is re-checked after a fresh sync inside the agent
+    const calendarMayBeBusy = isCalendarConnected(receiver) && receiver.googleCalendar.autoBusy;
+    const receiverMayBeBusy = isUserBusy(receiver) || calendarMayBeBusy;
+    // Only keep a readable copy when the receiver's assistant may actually need it
+    const sharedWithAgent =
+      receiverMayBeBusy && typeof agentText === "string" && agentText.trim()
+        ? agentText.slice(0, MAX_AGENT_TEXT_LENGTH)
+        : undefined;
+
     let imageUrl = null;
     if (image) {
       const upload = await cloudinary.uploader.upload(image);
@@ -117,6 +151,9 @@ export const sendMessage = async (req, res) => {
       text: encryptedText ? "" : (text || ""),
       encryptedText: encryptedText || null,
       encryptedTextForSender: encryptedTextForSender || null,
+      encVersion: isV2 ? 2 : undefined,
+      encKeys: isV2 ? { sender: encKeys.sender, receiver: encKeys.receiver } : undefined,
+      agentText: sharedWithAgent,
       image: imageUrl,
       isRead: false,
     });
@@ -130,8 +167,7 @@ export const sendMessage = async (req, res) => {
       // Receiver is offline! Send email notification asynchronously
       (async () => {
         try {
-          const receiver = await User.findById(receiverId);
-          if (receiver && receiver.email) {
+          if (receiver.email) {
             // Count unread messages from this sender to receiver to prevent notification spam
             const unreadCount = await Message.countDocuments({
               senderId,
@@ -141,14 +177,14 @@ export const sendMessage = async (req, res) => {
             // Send the notification email only for the first unread message in this offline session
             if (unreadCount === 1) {
               let preview = "Sent a secure encrypted message (open the app to decrypt)";
-              if (encryptedText) {
+              if (image) {
+                preview = "Sent an image 🖼️";
+              } else if (encryptedText && !isV2) {
                 const decrypted = decryptText(encryptedText, senderId, receiverId);
                 if (decrypted) {
                   preview = decrypted.length > 100 ? `${decrypted.substring(0, 100)}...` : decrypted;
                 }
-              } else if (image) {
-                preview = "Sent an image 🖼️";
-              } else if (text) {
+              } else if (text && !encryptedText) {
                 preview = text.length > 100 ? `${text.substring(0, 100)}...` : text;
               }
               const senderName = req.user.fullName || "A user";
@@ -161,15 +197,8 @@ export const sendMessage = async (req, res) => {
       })();
     }
 
-    try {
-      const receiver = await User.findById(receiverId);
-      // Calendar-driven busy is re-checked after a fresh sync inside the agent
-      const calendarMayBeBusy = isCalendarConnected(receiver) && receiver.googleCalendar.autoBusy;
-      if (receiver && (isUserBusy(receiver) || calendarMayBeBusy)) {
-        handleMessageToBusyUser(receiverId, senderId);
-      }
-    } catch (err) {
-      console.error("Error in busy check during sendMessage:", err);
+    if (receiverMayBeBusy) {
+      handleMessageToBusyUser(receiverId, senderId);
     }
 
     res.status(201).json(newMessage);

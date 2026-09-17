@@ -4,10 +4,12 @@ import { useChatStore } from "../store/useChatStore";
 import { axiosInstance } from "../lib/axios";
 import { useAIStore } from "../store/ai.store";
 import { isUserBusy } from "../lib/utils";
+import { useE2EEStore } from "../store/useE2EEStore";
 
 const ChatHeader = () => {
   const { selectedUser, setSelectedUser, clearChat } = useChatStore();
   const { onlineUsers } = useAuthStore();
+  const hasDeviceKeys = useE2EEStore((state) => state.status === "ready");
 
   if (!selectedUser) return null;
 
@@ -71,8 +73,17 @@ const ChatHeader = () => {
               )}
             </p>
             {!isAI && (
-              <p className="text-[10px] text-emerald-500 flex items-center gap-1 font-medium mt-0.5 select-none">
-                🔒 End-to-end encrypted
+              <p
+                className={`text-[10px] flex items-center gap-1 font-medium mt-0.5 select-none ${
+                  hasDeviceKeys && selectedUser.publicKey ? "text-emerald-500" : "text-base-content/60"
+                }`}
+                title={
+                  hasDeviceKeys && selectedUser.publicKey
+                    ? "Only you and this contact can read new messages"
+                    : "Upgrades to end-to-end encryption once you both set a chat PIN"
+                }
+              >
+                {hasDeviceKeys && selectedUser.publicKey ? "🔒 End-to-end encrypted" : "🔐 Encrypted (standard)"}
               </p>
             )}
           </div>

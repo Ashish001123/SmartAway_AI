@@ -9,6 +9,8 @@ import { sendWelcomeEmail, sendOTPEmail, sendVerificationEmail } from "../lib/em
 import { warmUpAIService } from "../lib/ai.js";
 import { isValidTimeZone } from "../lib/availability.js";
 import { calendarSummary } from "../lib/calendar.js";
+import { isValidKeyBackup, isValidPublicKey } from "../lib/e2ee.js";
+import { io } from "../lib/socket.js";
 
 const BUSY_MESSAGE_MAX_LENGTH = 1000;
 const AGENT_PERSONAS = ["friendly", "professional", "funny"];
@@ -39,6 +41,8 @@ const userResponse = (user) => ({
   notifyChannels: user.notifyChannels,
   telegramConnected: Boolean(user.telegramChatId),
   calendar: calendarSummary(user),
+  publicKey: user.publicKey,
+  hasKeyBackup: Boolean(user.encryptedPrivateKey),
 });
 
 // ─── SIGNUP (email/password) ─────────────────────────────────────────────────
@@ -347,25 +351,48 @@ export const updateBusySettings = async (req, res) => {
   }
 };
 
-// ─── E2EE: Upload this user's RSA public key ────────────────────────────────
-export const updatePublicKey = async (req, res) => {
+// ─── E2EE: Save this user's public key and PIN-wrapped private key ──────────
+export const updateE2EEKeys = async (req, res) => {
   try {
-    const { publicKey } = req.body;
-    if (!publicKey) {
-      return res.status(400).json({ message: "publicKey is required" });
+    const { publicKey, encryptedPrivateKey } = req.body;
+    if (!isValidPublicKey(publicKey) || !isValidKeyBackup(encryptedPrivateKey)) {
+      return res.status(400).json({ message: "Invalid encryption keys" });
     }
 
-    await User.findByIdAndUpdate(req.user._id, { publicKey });
-    res.status(200).json({ success: true });
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { publicKey, encryptedPrivateKey },
+      { new: true }
+    );
+
+    // Contacts must encrypt new messages to the new key
+    if (req.user.publicKey !== publicKey) {
+      io.emit("userKeyChanged", { userId: req.user._id.toString(), publicKey });
+    }
+    res.status(200).json(userResponse(updatedUser));
   } catch (error) {
-    console.log("error in updatePublicKey:", error);
+    console.log("error in updateE2EEKeys:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// ─── E2EE: Fetch another user's RSA public key ──────────────────────────────
+// ─── E2EE: The user's own key backup, needed to unlock on a new device ──────
+export const getE2EEKeys = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("publicKey encryptedPrivateKey");
+    res.status(200).json({ publicKey: user.publicKey, encryptedPrivateKey: user.encryptedPrivateKey });
+  } catch (error) {
+    console.log("error in getE2EEKeys:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ─── E2EE: Fetch another user's public key ──────────────────────────────────
 export const getUserPublicKey = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid user" });
+    }
     const user = await User.findById(req.params.id).select("publicKey");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.status(200).json({ publicKey: user.publicKey });

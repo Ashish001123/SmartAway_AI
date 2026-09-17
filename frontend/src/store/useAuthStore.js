@@ -5,6 +5,7 @@ import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
 import { useNotificationStore } from "./useNotificationStore";
 import { useDigestStore } from "./useDigestStore";
+import { useE2EEStore } from "./useE2EEStore";
 import { browserTimeZone } from "../lib/utils.js";
 // E2EE uses conversation-scoped keys derived on demand, no key generation needed here
 
@@ -161,6 +162,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const { authUser } = get();
       await axiosInstance.post("/auth/logout");
+      await useE2EEStore.getState().forgetDevice(authUser?._id);
       set({ authUser: null });
       toast.success("Logged out successfully");
       get().disconnectSocket();
@@ -227,6 +229,8 @@ export const useAuthStore = create((set, get) => ({
       }
     }
 
+    useE2EEStore.getState().init(authUser);
+
     const socket = io(BASE_URL, {
       query: {
         userId: authUser._id,
@@ -270,6 +274,19 @@ export const useAuthStore = create((set, get) => ({
             }
           };
         }
+      }
+    });
+
+    socket.on("userKeyChanged", async ({ userId, publicKey }) => {
+      if (userId !== get().authUser?._id) {
+        useChatStore.getState().updateUserPublicKey(userId, publicKey);
+        return;
+      }
+      // Keys were reset on another device: this device's key is no longer valid
+      if (publicKey !== useE2EEStore.getState().publicKey) {
+        await useE2EEStore.getState().forgetDevice(userId);
+        set((state) => ({ authUser: { ...state.authUser, publicKey, hasKeyBackup: true } }));
+        useE2EEStore.getState().init(get().authUser);
       }
     });
 
@@ -317,6 +334,7 @@ export const useAuthStore = create((set, get) => ({
       get().socket.off("ownerNotification");
       get().socket.off("telegramStatus");
       get().socket.off("callbackUpdated");
+      get().socket.off("userKeyChanged");
       get().socket.disconnect();
     }
   },

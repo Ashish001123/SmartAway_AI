@@ -2,7 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import Notification from "../models/notification.model.js";
 import { callAIService } from "./ai.js";
-import { agentVisibleText } from "./agentText.js";
+import { agentVisibleText, PRIVATE_MESSAGE_PLACEHOLDER } from "./agentText.js";
 import { sendOwnerNotificationEmail } from "./email.js";
 import { getContactFacts, rememberFact } from "./contactMemory.js";
 import { deliverAlert } from "./alerts.js";
@@ -157,7 +157,10 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
     lastOwnerMessage?.isAutoReply && new Date(lastOwnerMessage.createdAt).getTime() >= sessionStart;
 
   const rule = contactRule(owner, senderId);
-  const unansweredTexts = unanswered.map(agentVisibleText).filter(Boolean);
+  // Answer what the sender shared; mention private messages only if nothing else is readable
+  const allTexts = unanswered.map(agentVisibleText).filter(Boolean);
+  const readableTexts = allTexts.filter((text) => text !== PRIVATE_MESSAGE_PLACEHOLDER);
+  const unansweredTexts = readableTexts.length ? readableTexts : allTexts;
   const latestText = unansweredTexts[unansweredTexts.length - 1] || "";
   const timeLeft = describeTimeLeft(busyState.until);
   const calendarNote = busyState.calendarBlock

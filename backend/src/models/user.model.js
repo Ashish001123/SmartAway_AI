@@ -102,7 +102,12 @@ const userSchema = new mongoose.Schema(
         },
       ],
     },
+    // End-to-end encryption: public key (P-256 JWK) and the private key wrapped with the user's chat PIN
     publicKey: {
+      type: String,
+      default: null,
+    },
+    encryptedPrivateKey: {
       type: String,
       default: null,
     },
@@ -147,7 +152,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 
 // Fields safe to show other users; never expose passwords, OTP hashes or the private busy note
-export const PUBLIC_USER_FIELDS = "fullName email profilePic isBusy busyStart busyEnd useAI createdAt";
+export const PUBLIC_USER_FIELDS = "fullName email profilePic isBusy busyStart busyEnd useAI publicKey createdAt";
 
 const User = mongoose.model("User", userSchema);
 
