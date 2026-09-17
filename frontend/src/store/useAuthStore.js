@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
 import { useNotificationStore } from "./useNotificationStore";
+import { useDigestStore } from "./useDigestStore";
 import { browserTimeZone } from "../lib/utils.js";
 // E2EE uses conversation-scoped keys derived on demand, no key generation needed here
 
@@ -190,6 +191,8 @@ export const useAuthStore = create((set, get) => ({
       const res = await axiosInstance.put("/auth/busy-settings", data);
       set({ authUser: res.data });
       toast.success("Settings saved");
+      // Turning busy mode off is when the away summary becomes useful
+      if (data.isBusy === false) useDigestStore.getState().fetchDigest({ force: true });
       return res.data;
     } catch (error) {
       console.log("error in update busy settings:", error);

@@ -14,6 +14,7 @@ import messageRoutes from "./routes/message.route.js";
 import notificationRoutes from "./routes/notification.route.js";
 import alertRoutes from "./routes/alert.route.js";
 import calendarRoutes from "./routes/calendar.route.js";
+import agentRoutes from "./routes/agent.route.js";
 import { startSchedulers } from "./lib/callbacks.js";
 import { startTelegramBot } from "./lib/telegram.js";
 import { app, server } from "./lib/socket.js";
@@ -46,6 +47,7 @@ app.use("/api/ai", aiRoute);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api", alertRoutes);
 app.use("/api", calendarRoutes);
+app.use("/api/agent", agentRoutes);
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../../frontend/dist")));

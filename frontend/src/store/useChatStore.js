@@ -83,8 +83,10 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  sendMessage: async (messageData) => {
-    const { selectedUser } = get();
+  sendMessage: (messageData) => get().sendMessageTo(get().selectedUser, messageData),
+
+  // Sends to any contact (e.g. a one-tap reply from the away summary); returns true on success
+  sendMessageTo: async (targetUser, messageData) => {
     try {
       let payload = { ...messageData };
 
@@ -92,8 +94,8 @@ export const useChatStore = create((set, get) => ({
       if (messageData.text) {
         try {
           const authUser = useAuthStore.getState().authUser;
-          if (authUser && selectedUser) {
-            const key = await getConversationKey(authUser._id, selectedUser._id);
+          if (authUser && targetUser) {
+            const key = await getConversationKey(authUser._id, targetUser._id);
             const encryptedText = await encryptText(messageData.text, key);
 
             payload = {
@@ -108,7 +110,7 @@ export const useChatStore = create((set, get) => ({
       }
 
       const res = await axiosInstance.post(
-        `/messages/send/${selectedUser._id}`,
+        `/messages/send/${targetUser._id}`,
         payload
       );
 
@@ -116,15 +118,16 @@ export const useChatStore = create((set, get) => ({
       const decrypted = await decryptMessageObj(res.data);
 
       // An auto-reply can arrive over the socket before this resolves, so merge into the latest state
-      if (get().selectedUser?._id === selectedUser._id) {
+      if (get().selectedUser?._id === targetUser._id) {
         set((state) => ({ messages: appendMessage(state.messages, decrypted) }));
       }
       get().receiveMessage(res.data);
+      return true;
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to send message");
+      return false;
     }
   },
-
 
   subscribeToMessages: () => {
     const socket = useAuthStore.getState().socket;

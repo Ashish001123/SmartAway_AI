@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from agent import run_agent, generate_busy_reply
+from agent import run_agent, generate_busy_reply, generate_digest
 
 app = FastAPI()
 
@@ -103,3 +103,22 @@ def busy_reply(query: BusyQuery):
         "remember": response["remember"],
         "offerSlots": response["offer_slots"]
     }
+
+
+class DigestQuery(BaseModel):
+    ownerName: str
+    agentPersona: str = "friendly"
+    conversations: list = []
+
+
+@app.post("/digest")
+def digest(query: DigestQuery):
+    try:
+        items = generate_digest(
+            owner_name=query.ownerName,
+            persona=query.agentPersona,
+            conversations=query.conversations
+        )
+    except Exception as e:
+        _fail(e)
+    return {"items": items}

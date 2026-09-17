@@ -256,17 +256,23 @@ Respond with a JSON object only, in exactly this shape:
 {{"reply": "<your message to {sender}>", "notify_owner": false, "urgency": "normal", "summary": "", "remember": "", "offer_slots": false}}"""
 
 
-def _parse_agent_output(content: str) -> dict:
-    data = None
+def _load_json_object(content: str):
+    """Parses a JSON object, tolerating extra text around it. Returns None if there isn't one."""
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
+        if not match:
+            return None
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+    return data if isinstance(data, dict) else None
+
+
+def _parse_agent_output(content: str) -> dict:
+    data = _load_json_object(content)
 
     if not isinstance(data, dict):
         # The model ignored the JSON format; its text is still a usable reply
@@ -323,3 +329,77 @@ New message from {sender_name}:
         response_format={"type": "json_object"},
     )
     return _parse_agent_output(content)
+
+
+DIGEST_PRIORITIES = ("high", "medium", "low")
+
+
+def generate_digest(owner_name: str, persona: str, conversations: list) -> list:
+    """Summarises chats the busy agent handled. Raises on LLM failure so the backend can fall back."""
+    style = PERSONA_STYLES.get(persona, PERSONA_STYLES["friendly"])
+    blocks = []
+    for convo in conversations:
+        if not isinstance(convo, dict) or not convo.get("contactId"):
+            continue
+        name = convo.get("contactName") or "Someone"
+        speakers = {"contact": name, "assistant": "Your assistant", "owner": f"{owner_name} (you)"}
+        lines = [
+            f"{speakers.get(m.get('role'), name)}: {str(m.get('text') or '').strip()}"
+            for m in convo.get("transcript") or []
+            if isinstance(m, dict) and str(m.get("text") or "").strip()
+        ]
+        facts = []
+        if convo.get("notified"):
+            facts.append(f"{owner_name} was notified ({convo['notified']})")
+        if convo.get("callback"):
+            facts.append(f"a callback is booked for {convo['callback']}")
+        if convo.get("ownerReplied"):
+            facts.append(f"{owner_name} already replied personally after the assistant")
+        blocks.append(
+            f"Conversation with {name} (contact_id: {convo['contactId']})\n"
+            + (f"Facts: {'; '.join(facts)}\n" if facts else "")
+            + "\n".join(lines or ["(no readable messages)"])
+        )
+
+    if not blocks:
+        return []
+
+    system_prompt = f"""You write "While you were away" summaries for {owner_name}. Their AI assistant chatted with people while {owner_name} was busy.
+
+For each conversation return:
+- "contact_id": exactly as given.
+- "summary": 1-2 sentences for {owner_name}: what the person wanted, anything the assistant arranged (notification, callback), and whether it still needs {owner_name}'s attention.
+- "priority": "high" if urgent or time-sensitive, "medium" if they're waiting for a reply, "low" for small talk or already handled.
+- "suggested_reply": a short message (1-2 sentences) {owner_name} could send right now, written as {owner_name} in the first person, in the language the person used, addressing what they need. Tone: {style}.
+
+Respond with a JSON object only: {{"items": [{{"contact_id": "...", "summary": "...", "priority": "medium", "suggested_reply": "..."}}]}}"""
+
+    content = complete(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "\n\n---\n\n".join(blocks)},
+        ],
+        temperature=0.4,
+        max_tokens=1500,
+        response_format={"type": "json_object"},
+    )
+
+    data = _load_json_object(content)
+    if data is None:
+        raise ValueError(f"Digest response wasn't JSON: {content[:200]}")
+    items = []
+    for item in data.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        summary = str(item.get("summary") or "").strip()
+        reply = str(item.get("suggested_reply") or "").strip()
+        if not item.get("contact_id") or not summary or not reply:
+            continue
+        priority = str(item.get("priority") or "").lower()
+        items.append({
+            "contactId": str(item["contact_id"]),
+            "summary": summary[:400],
+            "priority": priority if priority in DIGEST_PRIORITIES else "medium",
+            "suggestedReply": reply[:500],
+        })
+    return items

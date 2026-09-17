@@ -81,6 +81,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Agent activity after this time appears in the "While you were away" summary
+    lastDigestSeenAt: {
+      type: Date,
+      default: null,
+    },
     googleCalendar: {
       refreshToken: { type: String, default: null }, // encrypted at rest
       email: { type: String, default: null },

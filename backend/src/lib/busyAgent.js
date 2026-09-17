@@ -2,7 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import Notification from "../models/notification.model.js";
 import { callAIService } from "./ai.js";
-import { decryptText } from "./e2ee.js";
+import { agentVisibleText } from "./agentText.js";
 import { sendOwnerNotificationEmail } from "./email.js";
 import { getContactFacts, rememberFact } from "./contactMemory.js";
 import { deliverAlert } from "./alerts.js";
@@ -18,13 +18,6 @@ const NOTIFY_COOLDOWN_MS = 10 * 60 * 1000;
 const SUMMARY_MAX_LENGTH = 280;
 
 const firstName = (user) => user.fullName.split(" ")[0];
-
-const messageText = (message) => {
-  if (message.encryptedText) {
-    return decryptText(message.encryptedText, message.senderId, message.receiverId);
-  }
-  return message.text || (message.image ? "[sent an image]" : "");
-};
 
 const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
@@ -164,7 +157,7 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
     lastOwnerMessage?.isAutoReply && new Date(lastOwnerMessage.createdAt).getTime() >= sessionStart;
 
   const rule = contactRule(owner, senderId);
-  const unansweredTexts = unanswered.map(messageText).filter(Boolean);
+  const unansweredTexts = unanswered.map(agentVisibleText).filter(Boolean);
   const latestText = unansweredTexts[unansweredTexts.length - 1] || "";
   const timeLeft = describeTimeLeft(busyState.until);
   const calendarNote = busyState.calendarBlock
@@ -233,7 +226,7 @@ const replyToBusyConversation = async (ownerId, senderId, answeredUpTo) => {
       chatHistory: earlier
         .map((m) => ({
           role: m.senderId.toString() === senderId ? "sender" : m.isAutoReply ? "assistant" : "owner",
-          text: messageText(m),
+          text: agentVisibleText(m),
         }))
         .filter((m) => m.text),
     });
@@ -312,7 +305,7 @@ export const requestNotificationFromSender = async (requester, owner) => {
     .slice(lastManualIndex + 1)
     .filter((m) => m.senderId.toString() === requesterId)
     .slice(-3)
-    .map(messageText)
+    .map(agentVisibleText)
     .filter(Boolean);
   const summary = recentTexts.length
     ? recentTexts.join(" / ")
