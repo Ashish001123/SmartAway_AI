@@ -231,11 +231,8 @@ export const useAuthStore = create((set, get) => ({
 
     useE2EEStore.getState().init(authUser);
 
-    const socket = io(BASE_URL, {
-      query: {
-        userId: authUser._id,
-      },
-    });
+    // The server identifies the socket from the login cookie
+    const socket = io(BASE_URL, { withCredentials: true });
     socket.connect();
 
     set({ socket: socket });

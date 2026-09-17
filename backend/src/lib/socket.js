@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import http from "http";
 import express from "express";
+import jwt from "jsonwebtoken";
 import { warmUpAIService } from "./ai.js";
 
 const app = express();
@@ -17,7 +18,27 @@ const io = new Server(server, {
       "http://localhost:5173",
       clientUrl,
     ],
+    credentials: true,
   },
+});
+
+const readCookie = (header, name) =>
+  (header || "")
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+
+// Identify sockets by the same JWT cookie as the API, never by a user id the client claims
+io.use((socket, next) => {
+  try {
+    const token = readCookie(socket.handshake.headers.cookie, "jwt");
+    const { userId } = jwt.verify(decodeURIComponent(token || ""), process.env.JWT_SECRET);
+    socket.data.userId = String(userId);
+    next();
+  } catch {
+    next(new Error("Unauthorized"));
+  }
 });
 
 // Every socket joins a room named after its user id, so emitting to that room reaches all of the
@@ -33,21 +54,17 @@ export function getReceiverSocketId(userId) {
 io.on("connection", (socket) => {
   console.log("A user connected", socket.id);
 
-  const userId = socket.handshake.query.userId;
-  if (userId) {
-    socket.join(userId);
-    userSocketCount.set(userId, (userSocketCount.get(userId) || 0) + 1);
-  }
+  const { userId } = socket.data;
+  socket.join(userId);
+  userSocketCount.set(userId, (userSocketCount.get(userId) || 0) + 1);
   io.emit("getOnlineUsers", [...userSocketCount.keys()]);
   warmUpAIService();
 
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
-    if (userId) {
-      const remaining = (userSocketCount.get(userId) || 1) - 1;
-      if (remaining > 0) userSocketCount.set(userId, remaining);
-      else userSocketCount.delete(userId);
-    }
+    const remaining = (userSocketCount.get(userId) || 1) - 1;
+    if (remaining > 0) userSocketCount.set(userId, remaining);
+    else userSocketCount.delete(userId);
     io.emit("getOnlineUsers", [...userSocketCount.keys()]);
   });
 });
