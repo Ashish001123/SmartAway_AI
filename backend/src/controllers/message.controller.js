@@ -1,4 +1,4 @@
-import User from "../models/user.model.js";
+import User, { PUBLIC_USER_FIELDS } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
 
@@ -14,7 +14,7 @@ export const getUsersForSidebar = async (req, res) => {
 
     const users = await User.find({
       _id: { $ne: loggedInUserId },
-    }).select("-password");
+    }).select(PUBLIC_USER_FIELDS);
     const unreadCounts = await Message.aggregate([
   {
     $match: {

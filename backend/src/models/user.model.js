@@ -84,6 +84,9 @@ const userSchema = new mongoose.Schema(
 // Sparse unique index on googleId (only indexes non-null values)
 userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 
+// Fields safe to show other users; never expose passwords, OTP hashes or the private busy note
+export const PUBLIC_USER_FIELDS = "fullName email profilePic isBusy busyStart busyEnd useAI createdAt";
+
 const User = mongoose.model("User", userSchema);
 
 export default User;

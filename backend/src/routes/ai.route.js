@@ -1,6 +1,6 @@
 import express from "express";
 import Message from "../models/message.model.js";
-import User from "../models/user.model.js";
+import User, { PUBLIC_USER_FIELDS } from "../models/user.model.js";
 const router = express.Router();
 import mongoose from "mongoose";
 import { sendMessage as mainSendMessage } from "../controllers/message.controller.js";
@@ -94,9 +94,9 @@ router.delete("/history", protectRoute, async (req, res) => {
   }
 });
 
-router.get("/user", async (req, res) => {
+router.get("/user", protectRoute, async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const users = await User.find().select(PUBLIC_USER_FIELDS);
     res.json(users);
   } catch (e) {
     console.error("AI users error", e);
@@ -104,9 +104,9 @@ router.get("/user", async (req, res) => {
   }
 });
 
-router.get("/online", async (req, res) => {
+router.get("/online", protectRoute, async (req, res) => {
   try {
-    const onlineUsers = await User.find({ isOnline: true }).select("-password");
+    const onlineUsers = await User.find({ isOnline: true }).select(PUBLIC_USER_FIELDS);
     res.json(onlineUsers);
   } catch (e) {
     console.error("AI online users error", e);
@@ -114,37 +114,41 @@ router.get("/online", async (req, res) => {
   }
 });
 
-router.post("/send", async (req, res) => {
+router.post("/send", protectRoute, async (req, res) => {
   try {
-    const { toUserId, text, fromUserId } = req.body;
+    const { toUserId, text } = req.body;
+    if (!mongoose.isValidObjectId(toUserId)) {
+      return res.status(400).json({ error: "Invalid receiver" });
+    }
 
-    const fakeReq = {
-      user: { _id: new mongoose.Types.ObjectId(fromUserId) },
-      params: { id: new mongoose.Types.ObjectId(toUserId) },
+    // Always send as the logged-in user, never as a sender named in the request body
+    const sendReq = {
+      user: req.user,
+      params: { id: toUserId },
       body: { text },
     };
 
-    const fakeRes = {
-      status: (code) => ({
-        json: (data) => res.status(code).json(data),
-      }),
-    };
-
-    await mainSendMessage(fakeReq, fakeRes);
+    await mainSendMessage(sendReq, res);
   } catch (e) {
     console.error("AI send error", e);
     res.status(500).json({ error: "send failed" });
   }
 });
 
-router.get("/search", async (req, res) => {
-  const q = req.query.q;
+router.get("/search", protectRoute, async (req, res) => {
+  try {
+    // Escape user input so it's matched literally, not run as a regex
+    const q = String(req.query.q || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  const users = await User.find({
-    fullName: { $regex: q, $options: "i" },
-  }).select("_id fullName");
+    const users = await User.find({
+      fullName: { $regex: q, $options: "i" },
+    }).select("_id fullName");
 
-  res.json(users);
+    res.json(users);
+  } catch (e) {
+    console.error("AI search error", e);
+    res.status(500).json({ error: "failed" });
+  }
 });
 
 export default router;
