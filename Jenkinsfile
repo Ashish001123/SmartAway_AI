@@ -4,33 +4,30 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
         stage('Test') {
             steps {
-                echo 'SmartAway_AI tests will run here'
+                echo 'Running SmartAway_AI tests...'
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Images') {
             steps {
-                echo 'SmartAway_AI build will run here'
+                sh '''
+                    docker build -t smartaway-frontend:${GIT_COMMIT} ./frontend
+                    docker build -t smartaway-backend:${GIT_COMMIT} ./backend
+                    docker build -t smartaway-ai:${GIT_COMMIT} ./ai-agent
+                '''
             }
         }
     }
 
     post {
-
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'SmartAway_AI CI pipeline completed successfully!'
         }
 
         failure {
-            echo 'Pipeline failed!'
+            echo 'SmartAway_AI CI pipeline failed!'
         }
     }
 }
