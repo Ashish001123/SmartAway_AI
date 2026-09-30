@@ -31,9 +31,9 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                    docker build -t ashish001123/smartaway-frontend:${GIT_COMMIT} ./frontend
-                    docker build -t ashish001123/smartaway-backend:${GIT_COMMIT} ./backend
-                    docker build -t ashish001123/smartaway-ai:${GIT_COMMIT} ./ai-agent
+                    docker build --platform linux/amd64 -t ashish001123/smartaway-frontend:${GIT_COMMIT} ./frontend
+                    docker build --platform linux/amd64 -t ashish001123/smartaway-backend:${GIT_COMMIT} ./backend
+                    docker build --platform linux/amd64 -t ashish001123/smartaway-ai:${GIT_COMMIT} ./ai-agent
                 '''
             }
         }
