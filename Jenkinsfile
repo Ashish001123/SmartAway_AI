@@ -10,6 +10,24 @@ pipeline {
             }
         }
 
+        stage('Docker Login') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USERNAME" \
+                            --password-stdin
+                    '''
+                }
+            }
+        }
+
         stage('Build Docker Images') {
             steps {
                 sh '''
@@ -22,28 +40,26 @@ pipeline {
 
         stage('Push Docker Images') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
-                    sh '''
-                        echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-                        
-                        docker push ashish001123/smartaway-frontend:${GIT_COMMIT}
-                        docker push ashish001123/smartaway-backend:${GIT_COMMIT}
-                        docker push ashish001123/smartaway-ai:${GIT_COMMIT}
-                        
-                        docker logout
-                    '''
-                }
+                sh '''
+                    docker push ashish001123/smartaway-frontend:${GIT_COMMIT}
+                    docker push ashish001123/smartaway-backend:${GIT_COMMIT}
+                    docker push ashish001123/smartaway-ai:${GIT_COMMIT}
+                '''
             }
         }
     }
 
     post {
+        always {
+            sh 'docker logout || true'
+        }
+
         success {
-            echo 'SmartAway_AI CI pipeline completed successfully!'
+            echo 'SmartAway_AI CI/CD pipeline completed successfully!'
         }
 
         failure {
-            echo 'SmartAway_AI CI pipeline failed!'
+            echo 'SmartAway_AI CI/CD pipeline failed!'
         }
     }
 }
